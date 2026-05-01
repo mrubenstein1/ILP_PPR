@@ -85,6 +85,11 @@ cat("Total EAUs:", nrow(eau_wmd), "\n")
 cat("Total WMDs:", nrow(eau_summary), "\n")
 print(eau_summary)
 
+#visualize the EAUs per WMD
+plot(wmd_split)
+plot(as.polygons(wmd_split, dissolve = FALSE), add = TRUE, border = "white", lwd = 0.3)
+
+
 # ── 6. Save ───────────────────────────────────────────────────────────────────
 saveRDS(eau_wmd,     "input_data/eau_wmd_lookup.rds")
 write.csv(eau_wmd,     "input_data/eau_wmd_lookup.csv",   row.names = FALSE)
