@@ -13,13 +13,14 @@
 library(terra)
 library(sf)
 library(dplyr)
+library(tidyr)
 
 ##########################
 ##### I. IMPORT ##########
 ##########################
 
 #Load WMD shapefile
-wmd <- st_read("Data/Wetland_Management_Districts/FSMS_WMD.shp")
+wmd <- st_read("input_data/Wetland_Management_Districts/FSMS_WMD.shp")
 
 #Calculate target cell size
   #if we want an average of 50 EAUs per WMD, how large does each EAU need to be?
@@ -44,13 +45,13 @@ wmd_split <- rasterize(wmd, wmd_r, field = "WMD", touches = FALSE) #touches=F me
 plot(wmd_split)
 
 #save as geotiff
-#writeRaster(wmd_split, "Data/wmd_raster_equal_area.tif", filetype = 'GTiff') #this line is commented out because once the tif is saved, it doesn't need to be re-written
+#writeRaster(wmd_split, "input_data/wmd_raster_equal_area.tif", filetype = 'GTiff') #this line is commented out because once the tif is saved, it doesn't need to be re-written
 
 ##########################
 ##### II. EXTRACT EAU x WMD LOOKUP TABLE ##########
 ##########################
 # Reload the raster
-wmd_r   <- rast("Data/wmd_raster_equal_area.tif")
+wmd_r   <- rast("input_data/wmd_raster_equal_area.tif")
 
 # ── 2. Build WMD reference table (numeric ID + area) ─────────────────────────
 wmd_ref <- wmd %>%
@@ -85,6 +86,6 @@ cat("Total WMDs:", nrow(eau_summary), "\n")
 print(eau_summary)
 
 # ── 6. Save ───────────────────────────────────────────────────────────────────
-saveRDS(eau_wmd,     "Data/eau_wmd_lookup.rds")
-write.csv(eau_wmd,     "Data/eau_wmd_lookup.csv",   row.names = FALSE)
-write.csv(eau_summary, "Data/wmd_summary.csv",       row.names = FALSE)
+saveRDS(eau_wmd,     "input_data/eau_wmd_lookup.rds")
+write.csv(eau_wmd,     "input_data/eau_wmd_lookup.csv",   row.names = FALSE)
+write.csv(eau_summary, "input_data/wmd_summary.csv",       row.names = FALSE)
