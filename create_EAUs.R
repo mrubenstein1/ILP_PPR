@@ -1,7 +1,7 @@
 ###ILP Formulation of the PPR Problem ###
   # March 2026
 
-### Establish Spatial Units of Analysis ####
+### ESTABLISH EAUs ####
   # spatial unit of analysis is a simulated parcel of uniform dimension (“equal area unit”, EAU)
   # EAU = 282km2 (70,000 acres). 
   # the number of EAUs per WMD varies based on WMD size, but there are on average 50 EAUs per WMD. 
@@ -9,11 +9,12 @@
 
 #Credit Heini Kujala for original script; modified by Madeleine Rubenstein March 2026
 
-#Load required libraries & data
+#Load required libraries for all scripts
 library(terra)
 library(sf)
 library(dplyr)
 library(tidyr)
+library(parallel)
 
 ##########################
 ##### I. IMPORT ##########
@@ -94,3 +95,4 @@ plot(as.polygons(wmd_split, dissolve = FALSE), add = TRUE, border = "white", lwd
 saveRDS(eau_wmd,     "input_data/eau_wmd_lookup.rds")
 write.csv(eau_wmd,     "input_data/eau_wmd_lookup.csv",   row.names = FALSE)
 write.csv(eau_summary, "input_data/wmd_summary.csv",       row.names = FALSE)
+
