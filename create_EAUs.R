@@ -15,6 +15,8 @@ library(sf)
 library(dplyr)
 library(tidyr)
 library(parallel)
+library(readr)
+library(stringr)
 
 ##########################
 ##### I. IMPORT ##########

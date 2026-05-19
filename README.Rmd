@@ -1,0 +1,41 @@
+---
+title: "README"
+output: html_document
+date: "2026-05-05"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## ILP Formulation of the PPR Problem
+
+This analysis examines the aquisition optimization problem of iteratively acquiring habitat for waterfowl conservation in the Prairie Pothole Region of the United States. It compares 3 decision models (a greedy heuristic, a myopic ILP, and a time-dependent ILP) and assesses their performance under conditions of ecological non-stationarity. 
+
+
+## Overview of Key Scripts
+
+1. **Create_EAUs**: takes the shapefile of waterfowl management districts (WMDs) in the PPR and breaks them into our spatial unit of analysis (equal area units, EAUs)
+
+2. **EAU_prop_suitable**: calculates the proportion of suitable habitat in each EAU, based on landcover data from the USGS FOREsce model. Output is the basis for the full data panel, which defines percent suitable habitat for each EAU over time
+
+3. **eau_visualizations**: currently just a sanity check on the prop_suitable data. Make sure that we see some reasonable changes over time, and whether there are differences between the two RCPs. Create a map to show changes in proportion suitable habitat from first to last year
+
+4. **create_data_panel**: takes the outputs of EAU_prop_suitable (the datatable of percent suitable habitat per year per EAU), and uses it to construct the final data table. The final data panel (i.e., final product of data import/manipulation) will be a dataframe of EAU per time period per RCP per GCM: 
+•	EAU: 1168 (1210- 41 EAUs without landcover data)
+•	Time period: 9
+•	RCP: 2
+•	GCM: 2
+•	Stationary or no: 1
+•	Total rows: 54,450
+
+Columns describe each EAU in these states, and cover the following variables:
+•	% suitable habitat: percent of land cover of a class suitable for waterfowl breeding
+•	Abs_density: absolute density of waterfowl breeding pairs, assuming homogenous distribution from WMD scale
+•	Scaled_density:  scaled density of waterfowl breeding pairs (absolute density scaled to EAU level based on % suitable habitat)
+•	Trans_prob: transition probability from suitable to unsuitable
+•	Cost: cost of acquisition
+
+
+
+
