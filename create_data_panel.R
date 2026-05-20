@@ -315,3 +315,4 @@ check_stationary <- eau_panel %>%
 check_stationary %>%
   mutate(equal_min_max = dplyr::near(min_pct, max_pct)) %>%
   count(equal_min_max)
+
