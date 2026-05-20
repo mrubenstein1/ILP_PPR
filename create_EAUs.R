@@ -17,6 +17,8 @@ library(tidyr)
 library(parallel)
 library(readr)
 library(stringr)
+library(purrr)
+library(ggplot2)
 
 ##########################
 ##### I. IMPORT ##########
