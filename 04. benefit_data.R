@@ -124,8 +124,6 @@ abs_check %>%
 
 ####. Distribute benefit by proportional habitat #####
 
-
-
 eau_panel_alloc <- eau_panel_with_ben %>%
   group_by(wmd_id, year, rcp, gcm) %>%
   mutate(
