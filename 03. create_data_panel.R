@@ -51,10 +51,9 @@ panel_45 <- lu_45 %>%
   ) %>%
   mutate(
     year         = as.integer(str_extract(time_period, "[0-9]{4}")),
-    pct_suitable = prop_suitable * 100,
     rcp          = "45"
   ) %>%
-  select(eau_row, year, rcp, prop_suitable, pct_suitable)
+  select(eau_row, year, rcp, prop_suitable)
 
 # ------------------------------------------------------------
 # 5. Build long table for RCP 8.5: EAU × year
@@ -69,10 +68,9 @@ panel_85 <- lu_85 %>%
   ) %>%
   mutate(
     year         = as.integer(str_extract(time_period, "[0-9]{4}")),
-    pct_suitable = prop_suitable * 100,
     rcp          = "85"
   ) %>%
-  select(eau_row, year, rcp, prop_suitable, pct_suitable)
+  select(eau_row, year, rcp, prop_suitable)
 
 # ------------------------------------------------------------
 # 6. Stack both RCPs
@@ -103,7 +101,7 @@ panel_suitable <- panel_suitable %>%
   left_join(eau_meta, by = "eau_row")
 
 # ------------------------------------------------------------
-# 8. Duplicate rows for wet vs dry GCMs
+# 8. Duplicate rows for wet vs dry GCMs. ## THIS WOULD NEED TO CHANGE IF WE FIND A DIFFERENT FORESCE SCENARIO TO MATCH THE DIFFERENT GCMS
 # ------------------------------------------------------------
 gcm_levels <- c("wet", "dry")
 
@@ -127,7 +125,6 @@ eau_panel <- panel_suitable_gcm %>%
     rcp,
     gcm,
     prop_suitable,
-    pct_suitable,
     abs_density,
     scaled_density,
     trans_prob,
@@ -191,7 +188,6 @@ baseline_2020_45_dry <- eau_panel %>%
   group_by(eau_id) %>%
   summarise(
     prop_suitable_baseline = first(prop_suitable),
-    pct_suitable_baseline  = first(pct_suitable),
     .groups = "drop"
   )
 
@@ -204,13 +200,8 @@ eau_panel <- eau_panel %>%
       prop_suitable_baseline,
       prop_suitable
     ),
-    pct_suitable = if_else(
-      rcp == "stationary",
-      pct_suitable_baseline,
-      pct_suitable
-    )
-  ) %>%
-  select(-prop_suitable_baseline, -pct_suitable_baseline)
+    ) %>%
+  select(-prop_suitable_baseline)
 
 
 
@@ -307,12 +298,12 @@ check_stationary <- eau_panel %>%
   group_by(eau_id) %>%
   summarise(
     n_years_stationary = n_distinct(year),
-    min_pct            = min(pct_suitable, na.rm = TRUE),
-    max_pct            = max(pct_suitable, na.rm = TRUE),
+    min_prop            = min(prop_suitable, na.rm = TRUE),
+    max_prop            = max(prop_suitable, na.rm = TRUE),
     .groups = "drop"
   )
 
 check_stationary %>%
-  mutate(equal_min_max = dplyr::near(min_pct, max_pct)) %>%
+  mutate(equal_min_max = dplyr::near(min_prop, max_prop)) %>%
   count(equal_min_max)
 

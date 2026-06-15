@@ -368,23 +368,28 @@ their performance under conditions of ecological non-stationarity.</p>
 <ol style="list-style-type: decimal">
 <li><p><strong>Create_EAUs</strong>: takes the shapefile of waterfowl
 management districts (WMDs) in the PPR and breaks them into our spatial
-unit of analysis (equal area units, EAUs)</p></li>
+unit of analysis (equal area units, EAUs). Creates a lookup table to
+match EAUs to WMDs for future reference and calculations.</p></li>
 <li><p><strong>EAU_prop_suitable</strong>: calculates the proportion of
 suitable habitat in each EAU, based on landcover data from the USGS
 FOREsce model. Output is the basis for the full data panel, which
 defines percent suitable habitat for each EAU over time</p></li>
-<li><p><strong>eau_visualizations</strong>: currently just a sanity
-check on the prop_suitable data. Make sure that we see some reasonable
-changes over time, and whether there are differences between the two
-RCPs. Create a map to show changes in proportion suitable habitat from
-first to last year</p></li>
-<li><p><strong>create_data_panel</strong>: takes the outputs of
+</ol>
+<blockquote>
+<p><strong>eau_visualizations</strong>: currently just a sanity check on
+the prop_suitable data. Make sure that we see some reasonable changes
+over time, and whether there are differences between the two RCPs.
+Create a map to show changes in proportion suitable habitat from first
+to last year</p>
+</blockquote>
+<ol start="3" style="list-style-type: decimal">
+<li><strong>create_data_panel</strong>: takes the outputs of
 EAU_prop_suitable (the datatable of percent suitable habitat per year
 per EAU), and uses it to construct the final data table. The final data
-panel (i.e., final product of data import/manipulation) will be a
-dataframe of EAU per time period per RCP per GCM: • EAU: 1210 • Time
-period: 9 • RCP: 3 • GCM: 2 • Stationary or no: 1 • Total rows:
-54,450</p></li>
+panel (i.e., final product of data import/manipulation) is be a
+dataframe of EAU per time period per RCP per GCM: • EAU: 1168 (1210- 41
+EAUs without landcover data) • Time period: 9 • RCP: 2 • GCM: 2 •
+Stationary or no: 1 • Total rows: 54,450</li>
 </ol>
 <p>Columns describe each EAU in these states, and cover the following
 variables: • % suitable habitat: percent of land cover of a class
@@ -393,7 +398,16 @@ waterfowl breeding pairs, assuming homogenous distribution from WMD
 scale • Scaled_density: scaled density of waterfowl breeding pairs
 (absolute density scaled to EAU level based on % suitable habitat) •
 Trans_prob: transition probability from suitable to unsuitable • Cost:
-cost of acquisition</p>
+cost of acquisition.</p>
+<p>Data on waterfowl density, cost, and transition probabilities will be
+added to this table.</p>
+<ol start="4" style="list-style-type: decimal">
+<li><strong>benefit_data</strong>: import benefit (i.e., waterfowl
+density) data, restructures around our analytical GCM x RCP structure,
+and conducts linear interpolation to match decadal decision points.
+Matches benefit data to full data panel. Distributes benefit data by EAU
+(i.e., within WMDs) by % suitable habitat.</li>
+</ol>
 </div>
 
 
