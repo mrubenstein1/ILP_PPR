@@ -34,54 +34,106 @@ benefit_new <- benefit %>%
 
 #### II. Interpolate Decadal Data ####
 
+# ── Step 1: Extract the single 2020 observational anchor per WMD ─────────────
+ben_2020 <- benefit_new %>%
+  filter(year == 2020) %>%
+  select(wmd_id, ben)
 
-# 0. Keep track of which rows are observed vs modeled future
-benefit_tagged <- benefit_new %>%
-  mutate(
-    is_obs = is.na(rcp) & is.na(gcm) & year == 2020L
-  )
+# ── Step 2: Extract future known values at 2050 and 2100 ─────────────────────
+future_data <- benefit_new %>%
+  filter(year %in% c(2050, 2100)) %>%
+  select(wmd_id, rcp, gcm, year, ben)
 
-# 1. Split into observed baseline and future scenarios
-benefit_obs <- benefit_tagged %>%
-  filter(is_obs)
+# ── Step 3: Build full anchor set for interpolation ───────────────────────────
+# Assign the shared 2020 observation as starting anchor for each RCP × GCM combo
+anchor_2020 <- future_data %>%
+  distinct(wmd_id, rcp, gcm) %>%
+  left_join(ben_2020, by = "wmd_id") %>%
+  mutate(year = 2020L)
 
-benefit_future <- benefit_tagged %>%
-  filter(!is_obs)  # only rows with RCP/GCM defined
+anchors <- bind_rows(anchor_2020, future_data) %>%
+  arrange(wmd_id, rcp, gcm, year)
 
-# 2. For future scenarios, create decadal grid and interpolate within each WMD × scenario
+# ── Step 4: Create the full decadal grid for all WMD × RCP × GCM combos ─────
+decade_grid <- anchors %>%
+  distinct(wmd_id, rcp, gcm) %>%
+  crossing(year = as.integer(seq(2020, 2100, by = 10)))
 
-benefit_future_decades <- benefit_future %>%
-  mutate(year = as.integer(year)) %>%
+# ── Step 5: Join anchors onto grid and linearly interpolate ───────────────────
+# approx() interpolates between the three known anchor years (2020, 2050, 2100)
+# treating each segment (2020→2050, 2050→2100) independently
+benefit_decadal_future <- decade_grid %>%
+  left_join(anchors, by = c("wmd_id", "rcp", "gcm", "year")) %>%
+  arrange(wmd_id, rcp, gcm, year) %>%
   group_by(wmd_id, rcp, gcm) %>%
-  complete(year = seq(2030L, 2100L, by = 10L)) %>%   # full decadal grid
-  ungroup()
-
-benefit_future_interp <- benefit_future_decades %>%
-  group_by(wmd_id, rcp, gcm) %>%
-  arrange(year, .by_group = TRUE) %>%
   mutate(
-    ben = {
-      x_obs <- year[!is.na(ben)]
-      y_obs <- ben[!is.na(ben)]
-      if (length(x_obs) >= 2) {
-        # Linear interpolation between the available anchors
-        approx(x = x_obs, y = y_obs, xout = year,
-               method = "linear", rule = 2)$y
-      } else {
-        # If only one point exists (e.g., only 2050), we leave others as NA
-        ben
-      }
-    }
+    ben = approx(
+      x    = year[!is.na(ben)],
+      y    = ben[!is.na(ben)],
+      xout = year
+    )$y
   ) %>%
   ungroup()
 
-# 3. Recombine observed baseline and interpolated future scenarios
+# ── Step 6: Bind back the single 2020 observational row ──────────────────────
+ben_2020_obs <- benefit_new %>%
+  filter(year == 2020) %>%
+  select(wmd_id, year, rcp, gcm, ben)
 
-benefit_interp <- bind_rows(
-  benefit_obs,          # only 2020 Obs values
-  benefit_future_interp # decadal interpolated futures
+benefit_decadal <- bind_rows(
+  ben_2020_obs,
+  benefit_decadal_future %>% filter(year > 2020)   # drop 2020 from future grid
 ) %>%
-  arrange(wmd_id, rcp, gcm, year)
+  arrange(wmd_id, year, rcp, gcm)
+
+# ── Sanity check ──────────────────────────────────────────────────────────────
+# Each year should have W WMDs; 2020 has 1 row/WMD, all other decades have 4
+benefit_decadal %>%
+  count(year, rcp, gcm)
+nrow(benefit_decadal)
+
+# 1. Inner join on all four keys
+#    na_matches = "na" ensures the 2020 NA rows (rcp/gcm) join correctly
+check <- benefit_new %>%
+  inner_join(
+    benefit_decadal,
+    by         = c("wmd_id", "rcp", "gcm", "year"),
+    suffix     = c("_new", "_decadal"),
+    na_matches = "na"
+  ) %>%
+  mutate(
+    diff  = ben_new - ben_decadal,
+    match = near(ben_new, ben_decadal)   # near() is float-safe; avoids == rounding issues
+  )
+
+# 2. Coverage check: any benefit_new rows absent from benefit_decadal?
+unmatched <- anti_join(
+  benefit_new, benefit_decadal,
+  by         = c("wmd_id", "rcp", "gcm", "year"),
+  na_matches = "na"
+)
+
+cat("Rows in benefit_new:                        ", nrow(benefit_new),  "\n")
+cat("Rows successfully matched (inner join):     ", nrow(check),        "\n")
+cat("Rows in benefit_new with NO match:          ", nrow(unmatched),    "\n")
+
+if (nrow(unmatched) > 0) {
+  message("⚠ Unmatched rows:")
+  print(unmatched)
+}
+
+# 3. Value check: do matched rows agree?
+mismatches <- check %>% filter(!match)
+cat("Value mismatches:                           ", nrow(mismatches),   "\n")
+
+if (nrow(mismatches) > 0) {
+  message("⚠ Mismatched values:")
+  print(mismatches %>% select(wmd_id, year, rcp, gcm, ben_new, ben_decadal, diff))
+} else {
+  message("✓ All matched values are identical.")
+}
+
+
 
 
 
@@ -89,7 +141,7 @@ benefit_interp <- bind_rows(
 
 
 # 1. Select only the join keys + ben from benefit_interp
-benefit_for_join <- benefit_interp %>%
+benefit_for_join <- benefit_decadal %>%
   select(wmd_id, year, rcp, gcm, ben)
 
 # 2. Join to eau_panel and write ben into abs_density
