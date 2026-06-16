@@ -20,9 +20,9 @@ library(stringr)
 library(purrr)
 library(ggplot2)
 
--------------------------------------------------------------------
+ 
 ##### 1. Import Data ##########
--------------------------------------------------------------------
+ 
 
 #Load WMD shapefile
 wmd <- st_read("input_data/Wetland_Management_Districts/FSMS_WMD.shp")
@@ -52,9 +52,9 @@ plot(wmd_split)
 #save as geotiff
 #writeRaster(wmd_split, "input_data/wmd_raster_equal_area.tif", filetype = 'GTiff') #this line is commented out because once the tif is saved, it doesn't need to be re-written
 
--------------------------------------------------------------------
+ 
 ##### 2. Extract EAU x WMD lookup table ##########
--------------------------------------------------------------------
+ 
 # Reload the raster
 wmd_r   <- rast("input_data/wmd_raster_equal_area.tif")
 
@@ -95,9 +95,9 @@ saveRDS(eau_wmd,     "input_data/eau_wmd_lookup.rds")
 write.csv(eau_wmd,     "input_data/eau_wmd_lookup.csv",   row.names = FALSE)
 write.csv(eau_summary, "input_data/wmd_summary.csv",       row.names = FALSE)
 
--------------------------------------------------------------------
+ 
 ##### 3. Logic Check ##########
--------------------------------------------------------------------
+ 
 
 checks <- list(
   "No NA values in eau_id"      = !any(is.na(eau_wmd$eau_id)),
