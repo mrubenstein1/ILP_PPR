@@ -1,5 +1,5 @@
 
-##### Benefit (Duck Density) Data ####
+##### Benefit (Duck abundance) Data ####
     # Import and clean benefit data
     # add to the established data panel
 
@@ -137,32 +137,84 @@ if (nrow(mismatches) > 0) {
 
 
 
+
 #####III. Match Benefit data into EAU_Panel ####
 
+#FIRST: remove the 4WMDs we are removing from the analysis.
+  #3 from Montana (Benton Lake, Bowdoin, and Northeast Montana) because the 
+  #underlying hydrological data that underpinned the duck abundance estimates performed poorly 
+  #in that region; and a 4th (Winsom) because of a mismatch of spatial extent with the FOREsce 
+  #landcover data. 
 
-# 1. Select only the join keys + ben from benefit_interp
-benefit_for_join <- benefit_decadal %>%
+# ------------------------------------------------------------
+# Drop excluded WMDs
+# ------------------------------------------------------------
+wmd_exclude <- c("Windom", "Benton Lake", "Bowdoin", "Northeast Montana")
+
+eau_panel_with_ben <- eau_panel_with_ben %>%
+  filter(!wmd_id %in% wmd_exclude)
+
+# Sanity check: confirm those WMDs are gone and row counts look right
+cat("WMDs remaining:", n_distinct(eau_panel_with_ben$wmd_id), "\n")
+cat("WMDs excluded:  ", 
+    paste(wmd_exclude[!wmd_exclude %in% unique(eau_panel_with_ben$wmd_id)], 
+          collapse = ", "), "\n")
+cat("EAUs remaining:", n_distinct(eau_panel_with_ben$eau_id), "\n")
+
+
+# ── Extract 2020 baseline (one row per WMD, used for 2020 and stationary) ────
+ben_2020_for_join <- benefit_decadal %>%
+  filter(year == 2020) %>%
+  distinct(wmd_id, .keep_all = TRUE) %>%
+  select(wmd_id, ben)
+
+# ── 2020: join on wmd_id only (rcp/gcm are NA and meaningless at baseline) ───
+panel_2020_with_ben <- eau_panel %>%
+  filter(year == 2020) %>%
+  left_join(ben_2020_for_join, by = "wmd_id") %>%
+  mutate(abs_abundance = ben) %>%
+  select(-ben)
+
+# ── Future stationary: hold 2020 observed abundance constant across all years ───
+panel_future_stationary_with_ben <- eau_panel %>%
+  filter(year > 2020, rcp == "stationary") %>%
+  left_join(ben_2020_for_join, by = "wmd_id") %>%
+  mutate(abs_abundance = ben) %>%
+  select(-ben)
+
+# ── Future non-stationary: join on all four keys ──────────────────────────────
+ben_future_for_join <- benefit_decadal %>%
+  filter(year > 2020) %>%
   select(wmd_id, year, rcp, gcm, ben)
 
-# 2. Join to eau_panel and write ben into abs_density
-eau_panel_with_ben <- eau_panel %>%
-  left_join(benefit_for_join,
-            by = c("wmd_id", "year", "rcp", "gcm")) %>%
-  mutate(
-    abs_density = ben  # copy WMD-level ben into abs_density
-  ) %>%
-  select(-ben)  # optional: drop ben after copying
+panel_future_nonstationary_with_ben <- eau_panel %>%
+  filter(year > 2020, rcp != "stationary") %>%
+  left_join(ben_future_for_join, by = c("wmd_id", "year", "rcp", "gcm")) %>%
+  mutate(abs_abundance = ben) %>%
+  select(-ben)
 
-### check that join worked properly
+# ── Recombine ─────────────────────────────────────────────────────────────────
+eau_panel_with_ben <- bind_rows(
+  panel_2020_with_ben,
+  panel_future_stationary_with_ben,
+  panel_future_nonstationary_with_ben
+) %>%
+  arrange(eau_id, year, rcp, gcm)
 
-# For each WMD × year × scenario, check if all EAUs share the same abs_density
+
+
+### IV. Sanity check ####
+eau_panel_with_ben %>%
+  summarise(n_na = sum(is.na(abs_abundance)))
+
+# For each WMD × year × scenario, check if all EAUs share the same abs_abundance
 abs_check <- eau_panel_with_ben %>%
   group_by(wmd_id, year, rcp, gcm) %>%
   summarise(
     n_eau        = n(),
-    min_abs      = min(abs_density, na.rm = TRUE),
-    max_abs      = max(abs_density, na.rm = TRUE),
-    n_na_abs     = sum(is.na(abs_density)),
+    min_abs      = min(abs_abundance, na.rm = TRUE),
+    max_abs      = max(abs_abundance, na.rm = TRUE),
+    n_na_abs     = sum(is.na(abs_abundance)),
     .groups = "drop"
   ) %>%
   mutate(
@@ -170,45 +222,68 @@ abs_check <- eau_panel_with_ben %>%
     any_na    = n_na_abs > 0
   )
 
-# Look at any combinations where abs_density is not constant across EAUs
+# Look at any combinations where abs_abundance is not constant across EAUs
 abs_check %>%
   filter(!all_equal & !any_na)
 
-####. Distribute benefit by proportional habitat #####
+# ── Sanity check: abs_abundance for year 2020 matches stationary rows ───────────
 
+# Extract 2020 baseline abundance per WMD (any rcp/gcm row will do, they're all equal)
+check_2020 <- eau_panel_with_ben %>%
+  filter(year == 2020) %>%
+  distinct(wmd_id, abs_abundance) %>%
+  rename(ben_2020 = abs_abundance)
+
+# Extract stationary abundance per WMD (any year will do, they should all be equal)
+check_stationary <- eau_panel_with_ben %>%
+  filter(rcp == "stationary", gcm == "stationary") %>%
+  distinct(wmd_id, abs_abundance) %>%
+  rename(ben_stationary = abs_abundance)
+
+# Compare
+check_2020_vs_stationary <- check_2020 %>%
+  left_join(check_stationary, by = "wmd_id") %>%
+  mutate(match = near(ben_2020, ben_stationary))
+
+n_mismatches <- sum(!check_2020_vs_stationary$match, na.rm = TRUE)
+cat("WMDs where 2020 and stationary abs_abundance differ:", n_mismatches, "\n")
+
+if (n_mismatches > 0) {
+  message("⚠ Mismatched WMDs:")
+  print(check_2020_vs_stationary %>% filter(!match))
+} else {
+  message("✓ 2020 and stationary abs_abundance values match for all WMDs.")
+}
+
+
+
+
+####. V. Distribute benefit by proportional habitat #####
 eau_panel_alloc <- eau_panel_with_ben %>%
   group_by(wmd_id, year, rcp, gcm) %>%
   mutate(
-    # total suitable habitat in this WMD × year × scenario
     total_prop_suitable = sum(prop_suitable, na.rm = TRUE),
-    # share of WMD habitat carried by this EAU
     habitat_share = ifelse(
       total_prop_suitable > 0,
       prop_suitable / total_prop_suitable,
       NA_real_
     ),
-    # allocate WMD-level abs_density down to EAUs
-    scaled_density = habitat_share * abs_density
+    scaled_abundance = habitat_share * abs_abundance
   ) %>%
   ungroup()
 
-### check that this distribution worked propoerly 
+# Sanity check: scaled_density should sum back to abs_density within each group
 alloc_check <- eau_panel_alloc %>%
   group_by(wmd_id, year, rcp, gcm) %>%
   summarise(
-    total_abs  = unique(abs_density),
-    sum_scaled = sum(scaled_density, na.rm = TRUE),
+    total_abs  = first(abs_abundance),
+    sum_scaled = sum(scaled_abundance, na.rm = TRUE),
     diff       = sum_scaled - total_abs,
     .groups    = "drop"
   )
 
-# Overall summary of diff
 summary(alloc_check$diff)
 
-# Look at any groups where diff is non‑negligible
 alloc_check %>%
   filter(!is.na(diff), abs(diff) > 1e-6) %>%
   arrange(desc(abs(diff)))
-
-
-
