@@ -38,7 +38,7 @@ Columns describe each EAU in these states, and cover the following variables:
 
 Data on waterfowl density, cost, and transition probabilities will be added to this table.
 
-4. **benefit_data**: import benefit (i.e., waterfowl density) data, restructures around our analytical GCM x RCP structure, and conducts linear interpolation to match decadal decision points. Matches benefit data to full data panel. Distributes benefit data by EAU (i.e., within WMDs) by % suitable habitat.  
+4. **benefit_data**: import benefit (i.e., waterfowl density) data, restructures around our analytical GCM x RCP structure, and conducts linear interpolation to match decadal decision points. Matches benefit data to full data panel. Distributes benefit data by EAU (i.e., within WMDs) by % suitable habitat. This is also the script where we drop the 4 WMDs that were ultimately excluded from the analysis (due to either poorly performing hydrological model or mismatch with landcover data extent). Final panel to be used for further analysis is *eau_panel_alloc*
 
 **benefit_graphs**: graphs to explore and gut check benefit data
 
