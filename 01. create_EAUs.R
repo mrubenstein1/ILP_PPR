@@ -20,9 +20,9 @@ library(stringr)
 library(purrr)
 library(ggplot2)
 
-##########################
-##### I. IMPORT ##########
-##########################
+-------------------------------------------------------------------
+##### 1. Import Data ##########
+-------------------------------------------------------------------
 
 #Load WMD shapefile
 wmd <- st_read("input_data/Wetland_Management_Districts/FSMS_WMD.shp")
@@ -52,9 +52,9 @@ plot(wmd_split)
 #save as geotiff
 #writeRaster(wmd_split, "input_data/wmd_raster_equal_area.tif", filetype = 'GTiff') #this line is commented out because once the tif is saved, it doesn't need to be re-written
 
-##########################
-##### II. EXTRACT EAU x WMD LOOKUP TABLE ##########
-##########################
+-------------------------------------------------------------------
+##### 2. Extract EAU x WMD lookup table ##########
+-------------------------------------------------------------------
 # Reload the raster
 wmd_r   <- rast("input_data/wmd_raster_equal_area.tif")
 
@@ -85,12 +85,7 @@ eau_summary <- eau_wmd %>%
   summarise(n_eaus = n(), .groups = "drop") %>%
   arrange(wmd_id_num)
 
-# ── 5. Check ──────────────────────────────────────────────────────────────────
-cat("Total EAUs:", nrow(eau_wmd), "\n")
-cat("Total WMDs:", nrow(eau_summary), "\n")
-print(eau_summary)
-
-#visualize the EAUs per WMD
+# ── 5. Visualize ──────────────────────────────────────────────────────────────────
 plot(wmd_split)
 plot(as.polygons(wmd_split, dissolve = FALSE), add = TRUE, border = "white", lwd = 0.3)
 
@@ -100,3 +95,57 @@ saveRDS(eau_wmd,     "input_data/eau_wmd_lookup.rds")
 write.csv(eau_wmd,     "input_data/eau_wmd_lookup.csv",   row.names = FALSE)
 write.csv(eau_summary, "input_data/wmd_summary.csv",       row.names = FALSE)
 
+-------------------------------------------------------------------
+##### 3. Logic Check ##########
+-------------------------------------------------------------------
+
+checks <- list(
+  "No NA values in eau_id"      = !any(is.na(eau_wmd$eau_id)),
+  "No NA values in wmd_id"      = !any(is.na(eau_wmd$wmd_id)),
+  "No NA values in wmd_id_num"  = !any(is.na(eau_wmd$wmd_id_num)),
+  "No NA values in area_km2"    = !any(is.na(eau_wmd$area_km2)),
+  "EAU IDs are unique"          = !any(duplicated(eau_wmd$eau_id)),
+  "EAU IDs are sequential 1:N"  = all(eau_wmd$eau_id == seq_len(nrow(eau_wmd))),
+  "Expected 24 WMDs"            = nrow(eau_summary) == 24,
+  "All WMDs have at least 1 EAU" = all(eau_summary$n_eaus > 0),
+  "Total EAUs in expected range" = between(nrow(eau_wmd), 1000, 1500)
+)
+
+for (nm in names(checks)) {
+  cat(sprintf("  %s  %s\n", if (checks[[nm]]) "[PASS]" else "[FAIL]", nm))
+}
+
+failures <- names(checks)[!unlist(checks)]
+
+if (length(failures) > 0) {
+  
+  # Print detail on specific failures before halting
+  if (!checks[["No NA values in eau_id"]])
+    cat("  NA count in eau_id:     ", sum(is.na(eau_wmd$eau_id)), "\n")
+  if (!checks[["No NA values in wmd_id"]])
+    cat("  NA count in wmd_id:     ", sum(is.na(eau_wmd$wmd_id)), "\n")
+  if (!checks[["No NA values in wmd_id_num"]])
+    cat("  NA count in wmd_id_num: ", sum(is.na(eau_wmd$wmd_id_num)), "\n")
+  if (!checks[["No NA values in area_km2"]])
+    cat("  NA count in area_km2:   ", sum(is.na(eau_wmd$area_km2)), "\n")
+  if (!checks[["EAU IDs are unique"]])
+    cat("  Duplicate EAU IDs:      ", sum(duplicated(eau_wmd$eau_id)), "\n")
+  if (!checks[["EAU IDs are sequential 1:N"]])
+    cat("  EAU ID range:            ", min(eau_wmd$eau_id), "to", max(eau_wmd$eau_id),
+        "(expected 1 to", nrow(eau_wmd), ")\n")
+  if (!checks[["Expected 24 WMDs"]])
+    cat("  WMDs found:             ", nrow(eau_summary), "(expected 24)\n")
+  if (!checks[["All WMDs have at least 1 EAU"]])
+    cat("  WMDs with 0 EAUs:       ", 
+        paste(eau_summary$wmd_id[eau_summary$n_eaus == 0], collapse = ", "), "\n")
+  if (!checks[["Total EAUs in expected range"]])
+    cat("  Total EAUs found:       ", nrow(eau_wmd), "(expected 1000–1500)\n")
+  
+  cat("========================================\n\n")
+  stop("Logic check FAILED: EAU × WMD lookup table has errors. ",
+       "Investigate before proceeding to downstream analysis.\n",
+       "Failed checks: ", paste(failures, collapse = ", "))
+  
+} else {
+  cat(sprintf("\n  All checks passed. WMDs: %d | Total EAUs: %d\n",
+              nrow(eau_summary), nrow(eau_wmd)))}
