@@ -54,7 +54,7 @@ map_gcm <- "dry"
 
 duck_panel_sf <- eau_grid %>%
   left_join(
-    eau_panel_alloc %>%
+    data_panel %>%
       filter(rcp == map_rcp, gcm == map_gcm) %>%
       select(eau_id, year, scaled_abundance),
     by = "eau_id"
@@ -136,7 +136,7 @@ map_gcm <- "dry"
 # ------------------------------------------------------------
 # 2. Compute percent change from previous time step
 # ------------------------------------------------------------
-eau_change <- eau_panel_alloc %>%
+eau_change <- data_panel %>%
   group_by(eau_id, rcp, gcm) %>%
   arrange(year, .by_group = TRUE) %>%
   mutate(
@@ -234,13 +234,13 @@ library(patchwork)
 # 1. Pick a random EAU (set seed for reproducibility)
 # ------------------------------------------------------------
 set.seed(42)
-chosen_eau <- sample(unique(eau_panel_alloc$eau_id), 1)
+chosen_eau <- sample(unique(data_panel$eau_id), 1)
 cat("Plotting EAU:", chosen_eau, "\n")
 
 # ------------------------------------------------------------
 # 2. Prepare data: build scenario label, subset, pivot long
 # ------------------------------------------------------------
-plot_data <- eau_panel_alloc %>%
+plot_data <- data_panel %>%
   filter(eau_id == chosen_eau) %>%
   mutate(
     scenario = case_when(
@@ -318,7 +318,7 @@ p_abundance <- make_panel(plot_data, "Scaled Breeding Pair Abundance (EAU-level)
 combined <- (p_suitable / p_abundance) +
   plot_annotation(
     title    = paste0("Scenario Divergence Over Time \u2013 EAU ", chosen_eau),
-    subtitle = paste0("WMD: ", unique(eau_panel_alloc$wmd_id[eau_panel_alloc$eau_id == chosen_eau])),
+    subtitle = paste0("WMD: ", unique(data_panel$wmd_id[data_panel$eau_id == chosen_eau])),
     theme    = theme(
       plot.title    = element_text(face = "bold", size = 13),
       plot.subtitle = element_text(size = 10, color = "grey40")
@@ -357,7 +357,7 @@ library(patchwork)
 # ============================================================
 
 # Build clean scenario labels
-eau_plot_base <- eau_panel_alloc %>%
+eau_plot_base <- data_panel %>%
   mutate(
     scenario = case_when(
       rcp == "stationary" ~ "Stationary",
