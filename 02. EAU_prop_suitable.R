@@ -19,7 +19,7 @@
 aoi_mask <- rast("input_data/wmd_raster_equal_area.tif")
 
 #2. Load LC data
-lu_r <- rast("/Users/mrubenstein/Desktop/ILP_PPR/input_data/prairie_potholes_gcam_ref_rcp45/prairie_potholes_gcam_ref_rcp45_2014.tif")
+lu_r <- rast("input_data/prairie_potholes_gcam_ref_rcp45/prairie_potholes_gcam_ref_rcp45_2014.tif")
 
 #3. crop LC data to EAU mask
 lu_r <- crop(lu_r, aoi_mask)

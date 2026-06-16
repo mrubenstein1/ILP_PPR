@@ -273,15 +273,20 @@ rows_per_eau <- eau_panel %>%
 bad_row_counts <- rows_per_eau %>% filter(n_rows_eau != expected_rows_per_eau)
 
 # Check 4: EAU counts per WMD should match the lookup table
+# NOTE: Windom is excluded from this check — 42 of its EAUs fall outside the
+# FOREsce extent and are dropped in Script 1. Windom will be removed entirely
+# in a downstream script, so the mismatch is expected and harmless.
+
 eaus_per_wmd_panel <- eau_panel %>%
   distinct(eau_id, wmd_id) %>%
   count(wmd_id, name = "n_eaus_panel")
 
-eaus_per_wmd_lookup <- eau_wmd %>%        
+eaus_per_wmd_lookup <- eau_wmd %>%
   count(wmd_id, name = "n_eaus_lookup")
 
 bad_wmd_counts <- eaus_per_wmd_lookup %>%
   left_join(eaus_per_wmd_panel, by = "wmd_id") %>%
+  filter(wmd_id != "Windom") %>%                    # exclude known expected mismatch
   filter(n_eaus_lookup != n_eaus_panel | is.na(n_eaus_panel))
 
 # Check 5: prop_suitable should be identical across wet/dry within each EAU–year–RCP

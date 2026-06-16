@@ -4,7 +4,7 @@
     # add to the established data panel
 
 
-#### I. Import data ####
+#### 1. Import data #####
 benefit <- read.csv("input_data/benefit.csv")
 
 # restructure around gcm/rcp/time step structure
@@ -32,7 +32,7 @@ benefit_new <- benefit %>%
   select(wmd_id, year, rcp, gcm, ben)
 
 
-#### II. Interpolate Decadal Data ####
+#### 2. Interpolate Decadal Data ####
 
 # ── Step 1: Extract the single 2020 observational anchor per WMD ─────────────
 ben_2020 <- benefit_new %>%
@@ -86,7 +86,365 @@ benefit_decadal <- bind_rows(
 ) %>%
   arrange(wmd_id, year, rcp, gcm)
 
-# ── Sanity check ──────────────────────────────────────────────────────────────
+
+##### 3. Match Benefit data into EAU_Panel ####
+
+#FIRST: remove the 4WMDs we are removing from the analysis.
+  #3 from Montana (Benton Lake, Bowdoin, and Northeast Montana) because the 
+  #underlying hydrological data that underpinned the duck abundance estimates performed poorly 
+  #in that region; and a 4th (Winsom) because of a mismatch of spatial extent with the FOREsce 
+  #landcover data. 
+
+# Drop excluded WMDs
+wmd_exclude <- c("Windom", "Benton Lake", "Bowdoin", "Northeast Montana")
+
+# Remove excluded WMDs from the base panel before joining benefit data
+eau_panel <- eau_panel %>%
+  filter(!wmd_id %in% wmd_exclude)
+
+# ── Extract 2020 baseline (one row per WMD, used for 2020 and stationary) ────
+ben_2020_for_join <- benefit_decadal %>%
+  filter(year == 2020) %>%
+  distinct(wmd_id, .keep_all = TRUE) %>%
+  select(wmd_id, ben)
+
+# ── 2020: join on wmd_id only (rcp/gcm are NA and meaningless at baseline) ───
+panel_2020_with_ben <- eau_panel %>%
+  filter(year == 2020) %>%
+  left_join(ben_2020_for_join, by = "wmd_id") %>%
+  mutate(abs_abundance = ben) %>%
+  select(-ben)
+
+# ── Future stationary: hold 2020 observed abundance constant across all years ───
+panel_future_stationary_with_ben <- eau_panel %>%
+  filter(year > 2020, rcp == "stationary") %>%
+  left_join(ben_2020_for_join, by = "wmd_id") %>%
+  mutate(abs_abundance = ben) %>%
+  select(-ben)
+
+# ── Future non-stationary: join on all four keys ──────────────────────────────
+ben_future_for_join <- benefit_decadal %>%
+  filter(year > 2020) %>%
+  select(wmd_id, year, rcp, gcm, ben)
+
+panel_future_nonstationary_with_ben <- eau_panel %>%
+  filter(year > 2020, rcp != "stationary") %>%
+  left_join(ben_future_for_join, by = c("wmd_id", "year", "rcp", "gcm")) %>%
+  mutate(abs_abundance = ben) %>%
+  select(-ben)
+
+# ── Recombine ─────────────────────────────────────────────────────────────────
+eau_panel_with_ben <- bind_rows(
+  panel_2020_with_ben,
+  panel_future_stationary_with_ben,
+  panel_future_nonstationary_with_ben
+) %>%
+  arrange(eau_id, year, rcp, gcm)
+
+#### 4. Distribute benefit by proportional habitat #####
+eau_panel_alloc <- eau_panel_with_ben %>%
+  group_by(wmd_id, year, rcp, gcm) %>%
+  mutate(
+    total_prop_suitable = sum(prop_suitable, na.rm = TRUE),
+    habitat_share = ifelse(
+      total_prop_suitable > 0,
+      prop_suitable / total_prop_suitable,
+      NA_real_
+    ),
+    scaled_abundance = habitat_share * abs_abundance
+  ) %>%
+  ungroup()
+
+
+#### 5. Rename final object for clarity ####
+
+data_panel <- eau_panel_alloc
+
+### 6. Logic check ####
+
+# Number of EAUs after WMD exclusion, derived from the filtered base panel
+n_eaus_expected <- n_distinct(eau_panel$eau_id)
+
+# Rows per EAU breaks down as follows:
+#   - 1 baseline row for 2020 (rcp = "baseline", gcm = "baseline")
+#   - For each future decade (2030, 2040, ..., 2100 = 8 time steps):
+#       4 non-stationary scenario rows (rcp45 × wet, rcp45 × dry,
+#                                       rcp85 × wet, rcp85 × dry)
+#     + 1 stationary row (rcp = "stationary", gcm = "stationary")
+#     = 5 rows per future time step
+n_rcp_gcm_combos     <- 4L                              # RCP45/85 × wet/dry
+n_stationary         <- 1L                              # stationary scenario
+n_scenarios_per_step <- n_rcp_gcm_combos + n_stationary # 5 rows per future year
+n_future_years       <- length(seq(2030, 2100, by = 10))# 8 decades
+n_baseline_rows      <- 1L                              # 2020 row
+
+rows_per_eau    <- (n_scenarios_per_step * n_future_years) + n_baseline_rows
+n_rows_expected <- n_eaus_expected * rows_per_eau
+
+cat(sprintf("  Expected EAUs:         %d\n", n_eaus_expected))
+cat(sprintf("  Expected rows per EAU: %d  (%d scenarios x %d decades + %d baseline)\n",
+            rows_per_eau, n_scenarios_per_step, n_future_years, n_baseline_rows))
+cat(sprintf("  Expected total rows:   %d\n", n_rows_expected))
+cat("\n")
+
+
+# ── Pre-compute all diagnostics ──────────────────────────────────────────────
+
+# A1: All original anchor rows present in benefit_decadal with matching values
+anchor_check <- benefit_new %>%
+  inner_join(
+    benefit_decadal,
+    by         = c("wmd_id", "rcp", "gcm", "year"),
+    suffix     = c("_new", "_decadal"),
+    na_matches = "na"
+  ) %>%
+  mutate(match = near(ben_new, ben_decadal))
+
+unmatched        <- anti_join(benefit_new, benefit_decadal,
+                              by = c("wmd_id", "rcp", "gcm", "year"),
+                              na_matches = "na")
+value_mismatches <- anchor_check %>% filter(!match)
+
+# A2: benefit_decadal row structure
+#     2020: 1 row per WMD (observational anchor; rcp/gcm = NA)
+#     Future decades: 4 rows per WMD x year (rcp45/85 x wet/dry)
+bad_2020_ben <- benefit_decadal %>%
+  filter(year == 2020) %>%
+  count(wmd_id) %>%
+  filter(n != 1)
+
+bad_future_ben <- benefit_decadal %>%
+  filter(year > 2020) %>%
+  count(wmd_id, year) %>%
+  filter(n != n_rcp_gcm_combos)
+
+# B1: No NAs in abs_abundance in eau_panel_with_ben (pre-downscaling)
+n_na_abs <- sum(is.na(eau_panel_with_ben$abs_abundance))
+
+# B2: abs_abundance constant across all EAUs within each WMD x year x scenario
+abs_inconsistent <- eau_panel_with_ben %>%
+  group_by(wmd_id, year, rcp, gcm) %>%
+  summarise(
+    min_abs = min(abs_abundance, na.rm = TRUE),
+    max_abs = max(abs_abundance, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  filter(!near(min_abs, max_abs))
+
+# B3: 2020 observed abundance matches stationary abundance for all WMDs
+stationary_mismatch <- eau_panel_with_ben %>%
+  filter(year == 2020) %>%
+  distinct(wmd_id, abs_abundance) %>%
+  rename(ben_2020 = abs_abundance) %>%
+  left_join(
+    eau_panel_with_ben %>%
+      filter(rcp == "stationary") %>%
+      distinct(wmd_id, abs_abundance) %>%
+      rename(ben_stationary = abs_abundance),
+    by = "wmd_id"
+  ) %>%
+  filter(!near(ben_2020, ben_stationary))
+
+# C1: scaled_abundance sums back to abs_abundance within each WMD x year x scenario
+alloc_errors <- data_panel %>%
+  group_by(wmd_id, year, rcp, gcm) %>%
+  summarise(
+    total_abs  = first(abs_abundance),
+    sum_scaled = sum(scaled_abundance, na.rm = TRUE),
+    diff       = sum_scaled - total_abs,
+    .groups    = "drop"
+  ) %>%
+  filter(!is.na(diff), abs(diff) > 1e-6)
+
+# C2: No NAs in abs_abundance or scaled_abundance in the final panel
+n_na_abs_final    <- sum(is.na(data_panel$abs_abundance))
+n_na_scaled_final <- sum(is.na(data_panel$scaled_abundance))
+
+# C3: abs_abundance and scaled_abundance are constant across all stationary
+#     time steps (2030-2100) and the 2020 baseline within each EAU.
+#     These should all match because the stationary scenario holds 2020
+#     landcover and abundance fixed throughout the planning horizon.
+stationary_vary <- data_panel %>%
+  filter(rcp == "stationary" | year == 2020) %>%
+  group_by(eau_id) %>%
+  summarise(
+    n_distinct_abs    = n_distinct(abs_abundance),
+    n_distinct_scaled = n_distinct(scaled_abundance),
+    .groups = "drop"
+  ) %>%
+  filter(n_distinct_abs > 1 | n_distinct_scaled > 1)
+
+# C4: Row count per EAU and total rows in final panel
+bad_eau_rowcounts <- data_panel %>%
+  count(eau_id, name = "n_rows") %>%
+  filter(n_rows != rows_per_eau)
+
+
+# ── Run checks ───────────────────────────────────────────────────────────────
+
+checks <- list(
+  "All benefit_new anchor rows present in benefit_decadal"              = nrow(unmatched) == 0,
+  "Anchor values preserved correctly after interpolation"               = nrow(value_mismatches) == 0,
+  "benefit_decadal: 1 row per WMD at 2020"                             = nrow(bad_2020_ben) == 0,
+  "benefit_decadal: 4 rows per WMD at future decades"                  = nrow(bad_future_ben) == 0,
+  "No NAs in abs_abundance after panel join"                            = n_na_abs == 0,
+  "abs_abundance constant within WMD x year x scenario"                = nrow(abs_inconsistent) == 0,
+  "2020 and stationary abs_abundance match for all WMDs"               = nrow(stationary_mismatch) == 0,
+  "scaled_abundance sums to abs_abundance within each group"           = nrow(alloc_errors) == 0,
+  "No NAs in abs_abundance or scaled_abundance in final panel"         = n_na_abs_final == 0 & n_na_scaled_final == 0,
+  "abs/scaled_abundance constant across stationary time steps per EAU" = nrow(stationary_vary) == 0,
+  "Each EAU has correct row count in final panel"                      = nrow(bad_eau_rowcounts) == 0,
+  "Final panel has expected total row count"                           = nrow(data_panel) == n_rows_expected
+)
+
+for (nm in names(checks)) {
+  cat(sprintf("  %s  %s\n", if (checks[[nm]]) "[PASS]" else "[FAIL]", nm))
+}
+
+failures <- names(checks)[!unlist(checks)]
+
+if (length(failures) > 0) {
+  
+  cat("\n  --- Diagnostic detail ---\n")
+  
+  if (!checks[["All benefit_new anchor rows present in benefit_decadal"]]) {
+    cat("  Unmatched rows:", nrow(unmatched), "\n")
+    print(unmatched)
+  }
+  if (!checks[["Anchor values preserved correctly after interpolation"]]) {
+    cat("  Value mismatches:", nrow(value_mismatches), "\n")
+    print(value_mismatches %>% select(wmd_id, year, rcp, gcm, ben_new, ben_decadal))
+  }
+  if (!checks[["benefit_decadal: 1 row per WMD at 2020"]]) {
+    cat("  WMDs with wrong 2020 row count:\n")
+    print(bad_2020_ben)
+  }
+  if (!checks[["benefit_decadal: 4 rows per WMD at future decades"]]) {
+    cat("  WMD-years with wrong future row count:\n")
+    print(bad_future_ben)
+  }
+  if (!checks[["No NAs in abs_abundance after panel join"]]) {
+    cat("  NA count in abs_abundance:", n_na_abs, "\n")
+    print(eau_panel_with_ben %>%
+            filter(is.na(abs_abundance)) %>%
+            distinct(wmd_id, year, rcp, gcm))
+  }
+  if (!checks[["abs_abundance constant within WMD x year x scenario"]]) {
+    cat("  Groups with inconsistent abs_abundance:", nrow(abs_inconsistent), "\n")
+    print(head(abs_inconsistent, 10))
+  }
+  if (!checks[["2020 and stationary abs_abundance match for all WMDs"]]) {
+    cat("  WMDs with mismatched 2020 vs stationary abundance:", nrow(stationary_mismatch), "\n")
+    print(stationary_mismatch)
+  }
+  if (!checks[["scaled_abundance sums to abs_abundance within each group"]]) {
+    cat("  Groups with allocation error > 1e-6:", nrow(alloc_errors), "\n")
+    print(head(alloc_errors %>% arrange(desc(abs(diff))), 10))
+  }
+  if (!checks[["No NAs in abs_abundance or scaled_abundance in final panel"]]) {
+    cat("  NAs in abs_abundance (final panel):   ", n_na_abs_final, "\n")
+    cat("  NAs in scaled_abundance (final panel):", n_na_scaled_final, "\n")
+    print(data_panel %>%
+            filter(is.na(abs_abundance) | is.na(scaled_abundance)) %>%
+            distinct(wmd_id, year, rcp, gcm))
+  }
+  if (!checks[["abs/scaled_abundance constant across stationary time steps per EAU"]]) {
+    cat("  EAUs with varying stationary/baseline abundance:", nrow(stationary_vary), "\n")
+    print(head(stationary_vary, 10))
+  }
+  if (!checks[["Each EAU has correct row count in final panel"]]) {
+    cat("  Expected rows per EAU:", rows_per_eau, "\n")
+    cat("  EAUs with wrong row count:", nrow(bad_eau_rowcounts), "\n")
+    print(bad_eau_rowcounts %>% count(n_rows))
+  }
+  if (!checks[["Final panel has expected total row count"]]) {
+    cat("  Expected:", n_rows_expected, "| Found:", nrow(data_panel), "\n")
+  }
+  
+  cat("========================================\n\n")
+  stop("Logic check FAILED: benefit data has errors. ",
+       "Investigate before proceeding to downstream analysis.\n",
+       "Failed checks: ", paste(failures, collapse = ", "))
+  
+} else {
+  cat(sprintf(
+    "\n  All checks passed. WMDs: %d | EAUs: %d | Total rows: %d\n",
+    n_distinct(data_panel$wmd_id),
+    n_distinct(data_panel$eau_id),
+    nrow(data_panel)
+  ))
+  cat("========================================\n\n")
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+eau_panel_with_ben %>%
+  summarise(n_na = sum(is.na(abs_abundance)))
+
+# For each WMD × year × scenario, check if all EAUs share the same abs_abundance
+abs_check <- eau_panel_with_ben %>%
+  group_by(wmd_id, year, rcp, gcm) %>%
+  summarise(
+    n_eau        = n(),
+    min_abs      = min(abs_abundance, na.rm = TRUE),
+    max_abs      = max(abs_abundance, na.rm = TRUE),
+    n_na_abs     = sum(is.na(abs_abundance)),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    all_equal = (min_abs == max_abs) | n_eau <= 1,  # or only one EAU
+    any_na    = n_na_abs > 0
+  )
+
+# Look at any combinations where abs_abundance is not constant across EAUs
+abs_check %>%
+  filter(!all_equal & !any_na)
+
+
+# Extract 2020 baseline abundance per WMD (any rcp/gcm row will do, they're all equal)
+check_2020 <- eau_panel_with_ben %>%
+  filter(year == 2020) %>%
+  distinct(wmd_id, abs_abundance) %>%
+  rename(ben_2020 = abs_abundance)
+
+# Extract stationary abundance per WMD (any year will do, they should all be equal)
+check_stationary <- eau_panel_with_ben %>%
+  filter(rcp == "stationary", gcm == "stationary") %>%
+  distinct(wmd_id, abs_abundance) %>%
+  rename(ben_stationary = abs_abundance)
+
+# Compare
+check_2020_vs_stationary <- check_2020 %>%
+  left_join(check_stationary, by = "wmd_id") %>%
+  mutate(match = near(ben_2020, ben_stationary))
+
+n_mismatches <- sum(!check_2020_vs_stationary$match, na.rm = TRUE)
+cat("WMDs where 2020 and stationary abs_abundance differ:", n_mismatches, "\n")
+
+if (n_mismatches > 0) {
+  message("⚠ Mismatched WMDs:")
+  print(check_2020_vs_stationary %>% filter(!match))
+} else {
+  message("✓ 2020 and stationary abs_abundance values match for all WMDs.")
+}
+
+
 # Each year should have W WMDs; 2020 has 1 row/WMD, all other decades have 4
 benefit_decadal %>%
   count(year, rcp, gcm)
@@ -135,143 +493,6 @@ if (nrow(mismatches) > 0) {
 
 
 
-
-
-
-#####III. Match Benefit data into EAU_Panel ####
-
-#FIRST: remove the 4WMDs we are removing from the analysis.
-  #3 from Montana (Benton Lake, Bowdoin, and Northeast Montana) because the 
-  #underlying hydrological data that underpinned the duck abundance estimates performed poorly 
-  #in that region; and a 4th (Winsom) because of a mismatch of spatial extent with the FOREsce 
-  #landcover data. 
-
-# ------------------------------------------------------------
-# Drop excluded WMDs
-# ------------------------------------------------------------
-wmd_exclude <- c("Windom", "Benton Lake", "Bowdoin", "Northeast Montana")
-
-eau_panel_with_ben <- eau_panel_with_ben %>%
-  filter(!wmd_id %in% wmd_exclude)
-
-# Sanity check: confirm those WMDs are gone and row counts look right
-cat("WMDs remaining:", n_distinct(eau_panel_with_ben$wmd_id), "\n")
-cat("WMDs excluded:  ", 
-    paste(wmd_exclude[!wmd_exclude %in% unique(eau_panel_with_ben$wmd_id)], 
-          collapse = ", "), "\n")
-cat("EAUs remaining:", n_distinct(eau_panel_with_ben$eau_id), "\n")
-
-
-# ── Extract 2020 baseline (one row per WMD, used for 2020 and stationary) ────
-ben_2020_for_join <- benefit_decadal %>%
-  filter(year == 2020) %>%
-  distinct(wmd_id, .keep_all = TRUE) %>%
-  select(wmd_id, ben)
-
-# ── 2020: join on wmd_id only (rcp/gcm are NA and meaningless at baseline) ───
-panel_2020_with_ben <- eau_panel %>%
-  filter(year == 2020) %>%
-  left_join(ben_2020_for_join, by = "wmd_id") %>%
-  mutate(abs_abundance = ben) %>%
-  select(-ben)
-
-# ── Future stationary: hold 2020 observed abundance constant across all years ───
-panel_future_stationary_with_ben <- eau_panel %>%
-  filter(year > 2020, rcp == "stationary") %>%
-  left_join(ben_2020_for_join, by = "wmd_id") %>%
-  mutate(abs_abundance = ben) %>%
-  select(-ben)
-
-# ── Future non-stationary: join on all four keys ──────────────────────────────
-ben_future_for_join <- benefit_decadal %>%
-  filter(year > 2020) %>%
-  select(wmd_id, year, rcp, gcm, ben)
-
-panel_future_nonstationary_with_ben <- eau_panel %>%
-  filter(year > 2020, rcp != "stationary") %>%
-  left_join(ben_future_for_join, by = c("wmd_id", "year", "rcp", "gcm")) %>%
-  mutate(abs_abundance = ben) %>%
-  select(-ben)
-
-# ── Recombine ─────────────────────────────────────────────────────────────────
-eau_panel_with_ben <- bind_rows(
-  panel_2020_with_ben,
-  panel_future_stationary_with_ben,
-  panel_future_nonstationary_with_ben
-) %>%
-  arrange(eau_id, year, rcp, gcm)
-
-
-
-### IV. Sanity check ####
-eau_panel_with_ben %>%
-  summarise(n_na = sum(is.na(abs_abundance)))
-
-# For each WMD × year × scenario, check if all EAUs share the same abs_abundance
-abs_check <- eau_panel_with_ben %>%
-  group_by(wmd_id, year, rcp, gcm) %>%
-  summarise(
-    n_eau        = n(),
-    min_abs      = min(abs_abundance, na.rm = TRUE),
-    max_abs      = max(abs_abundance, na.rm = TRUE),
-    n_na_abs     = sum(is.na(abs_abundance)),
-    .groups = "drop"
-  ) %>%
-  mutate(
-    all_equal = (min_abs == max_abs) | n_eau <= 1,  # or only one EAU
-    any_na    = n_na_abs > 0
-  )
-
-# Look at any combinations where abs_abundance is not constant across EAUs
-abs_check %>%
-  filter(!all_equal & !any_na)
-
-# ── Sanity check: abs_abundance for year 2020 matches stationary rows ───────────
-
-# Extract 2020 baseline abundance per WMD (any rcp/gcm row will do, they're all equal)
-check_2020 <- eau_panel_with_ben %>%
-  filter(year == 2020) %>%
-  distinct(wmd_id, abs_abundance) %>%
-  rename(ben_2020 = abs_abundance)
-
-# Extract stationary abundance per WMD (any year will do, they should all be equal)
-check_stationary <- eau_panel_with_ben %>%
-  filter(rcp == "stationary", gcm == "stationary") %>%
-  distinct(wmd_id, abs_abundance) %>%
-  rename(ben_stationary = abs_abundance)
-
-# Compare
-check_2020_vs_stationary <- check_2020 %>%
-  left_join(check_stationary, by = "wmd_id") %>%
-  mutate(match = near(ben_2020, ben_stationary))
-
-n_mismatches <- sum(!check_2020_vs_stationary$match, na.rm = TRUE)
-cat("WMDs where 2020 and stationary abs_abundance differ:", n_mismatches, "\n")
-
-if (n_mismatches > 0) {
-  message("⚠ Mismatched WMDs:")
-  print(check_2020_vs_stationary %>% filter(!match))
-} else {
-  message("✓ 2020 and stationary abs_abundance values match for all WMDs.")
-}
-
-
-
-
-####. V. Distribute benefit by proportional habitat #####
-eau_panel_alloc <- eau_panel_with_ben %>%
-  group_by(wmd_id, year, rcp, gcm) %>%
-  mutate(
-    total_prop_suitable = sum(prop_suitable, na.rm = TRUE),
-    habitat_share = ifelse(
-      total_prop_suitable > 0,
-      prop_suitable / total_prop_suitable,
-      NA_real_
-    ),
-    scaled_abundance = habitat_share * abs_abundance
-  ) %>%
-  ungroup()
-
 # Sanity check: scaled_density should sum back to abs_density within each group
 alloc_check <- eau_panel_alloc %>%
   group_by(wmd_id, year, rcp, gcm) %>%
@@ -287,3 +508,4 @@ summary(alloc_check$diff)
 alloc_check %>%
   filter(!is.na(diff), abs(diff) > 1e-6) %>%
   arrange(desc(abs(diff)))
+
