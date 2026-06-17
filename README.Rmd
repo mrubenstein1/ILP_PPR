@@ -44,3 +44,5 @@ Data on waterfowl density, cost, and transition probabilities will be added to t
 
 5. **risk of loss**: goal here is to describe the risk of a given eau losing its conservation/habitat value if not acquired. 
 
+6. **cost_data**: calculate cost per EAU for use in ILP. 
+
