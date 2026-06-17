@@ -19,7 +19,7 @@ This analysis examines the aquisition optimization problem of iteratively acquir
 
 2. **EAU_prop_suitable**: calculates the proportion of suitable habitat in each EAU, based on landcover data from the USGS FOREsce model. Output is the basis for the full data panel, which defines percent suitable habitat for each EAU over time
 
-2a. **eau_visualizations**: currently just a sanity check on the prop_suitable data. Make sure that we see some reasonable changes over time, and whether there are differences between the two RCPs. Create a map to show changes in proportion suitable habitat from first to last year
+2a. **viz_eau**: currently just a sanity check on the prop_suitable data. Make sure that we see some reasonable changes over time, and whether there are differences between the two RCPs. Create a map to show changes in proportion suitable habitat from first to last year
 
 3. **create_data_panel**: takes the outputs of EAU_prop_suitable (the datatable of percent suitable habitat per year per EAU), and uses it to construct the final data table. The final data panel (i.e., final product of data import/manipulation) is be a dataframe of EAU per time period per RCP per GCM: 
 •	EAU: 1168 (1210- 41 EAUs without landcover data)
@@ -40,7 +40,7 @@ Data on waterfowl density, cost, and transition probabilities will be added to t
 
 4. **benefit_data**: import benefit (i.e., waterfowl density) data, restructures around our analytical GCM x RCP structure, and conducts linear interpolation to match decadal decision points. Matches benefit data to full data panel. Distributes benefit data by EAU (i.e., within WMDs) by % suitable habitat. This is also the script where we drop the 4 WMDs that were ultimately excluded from the analysis (due to either poorly performing hydrological model or mismatch with landcover data extent). Final panel to be used for further analysis is *data_panel*
 
-4a. **benefit_graphs**: graphs to explore and gut check benefit data
+4a. **viz_benefit**: graphs to explore and gut check benefit data
 
 5. **risk of loss**: goal here is to describe the risk of a given eau losing its conservation/habitat value if not acquired. 
 
