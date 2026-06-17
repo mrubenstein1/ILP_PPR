@@ -32,7 +32,9 @@ epsilon_override <- NULL   # e.g., epsilon_override <- 0.005
 
 
 # ── 1. Calculate raw proportional loss ───────────────────####
-#Note: this is calculating proportional loss across all values in the data_panel:
+#Note: this is computed as a habitat erosion rate, but will be 
+  # interpreted as a per-period Bernoulli conversion probability in the final ILP. 
+
   # From t to t+1, what is the expected % of an EAU's suitable habitat that is 
   # expected to convert to unsuitable habitat?
   # in other words, what proportion of currently suitable habitat will be lost?
