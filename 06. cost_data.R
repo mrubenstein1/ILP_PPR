@@ -456,6 +456,23 @@ data_panel %>%
   print(n = Inf)
 
 
+cat("--- Cost distribution total (2020 baseline, USD) ---\n\n")
+
+data_panel %>%
+  filter(year == 2020, rcp == "baseline") %>%
+  summarise(
+    n_eaus      = n_distinct(eau_id),
+    mean_cost   = round(mean(cost)),
+    median_cost = round(median(cost)),
+    min_cost    = round(min(cost)),
+    max_cost    = round(max(cost)),
+    total_cost  = round(sum(cost)),
+    .groups = "drop"
+  ) %>%
+  arrange(desc(mean_cost)) %>%
+  print(n = Inf)
+
+
 # ── 13. Save ──────────────────────────────────────────────────────────────────####
 
 saveRDS(data_panel, "input_data/data_panel.rds")
