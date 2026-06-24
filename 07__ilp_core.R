@@ -230,6 +230,20 @@ solve_acquisition_ilp <- function(V_mat, cost_mat, budget, avail, periods,
     stop("The 'gurobi' R package is required. Install it from your Gurobi ",
          "installation (install.packages('<gurobi>/R/gurobi_x.y-z.tar.gz', ",
          "repos = NULL)) and activate an academic licence.")
+  
+  # Scale costs to avoid numerical issues from large USD values (billions range)
+  cost_scale <- 1e6
+  costs_s    <- costs / cost_scale
+  
+  A <- Matrix::sparseMatrix(
+    i    = c(row_once, row_budg),
+    j    = c(seq_len(nvar), seq_len(nvar)),
+    x    = c(rep(1, nvar), costs_s),
+    dims = c(n_av + n_pe, nvar)
+  )
+  sense <- rep("<=", n_av + n_pe)
+  rhs   <- c(rep(1, n_av), budget[periods] / cost_scale)
+  
   model <- list(
     A          = A,
     obj        = obj,
@@ -240,7 +254,11 @@ solve_acquisition_ilp <- function(V_mat, cost_mat, budget, avail, periods,
     vtype      = if (relax) "C" else "B",
     modelsense = "max"
   )
-  res <- gurobi::gurobi(model, params = list(OutputFlag = 1))
+  res <- gurobi::gurobi(model, params = list(
+    OutputFlag   = 0,
+    NumericFocus = 2,
+    ScaleFlag    = 3
+  ))
   # ---------------------------------------------------------------------------
 
   x <- res$x
