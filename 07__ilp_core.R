@@ -240,7 +240,7 @@ solve_acquisition_ilp <- function(V_mat, cost_mat, budget, avail, periods,
     vtype      = if (relax) "C" else "B",
     modelsense = "max"
   )
-  res <- gurobi::gurobi(model, params = list(OutputFlag = 0))
+  res <- gurobi::gurobi(model, params = list(OutputFlag = 1))
   # ---------------------------------------------------------------------------
 
   x <- res$x
