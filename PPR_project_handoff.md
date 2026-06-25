@@ -1,8 +1,13 @@
 # PPR Land Acquisition Under Climate Non-Stationarity — Project Handoff
 
-*Prepared as a context document for a future AI agent joining this project. It states
-the research question, data, modeling approach, current state, and the decisions that
-are already settled (so they are not reopened) along with the known limitations.*
+*Context document for a future collaborator (human or AI) joining this project. It states
+the research question, data, modeling approach, current state, the decisions that are
+already settled (so they are not reopened), and the known limitations.*
+
+**Last updated 2026-06-25**, after the first complete R/Gurobi run on real data. The
+solver-runtime investigation that dominated the prior session is now **resolved**; the
+headline comparison has been produced. See §4 for the current state and §8 for the
+resolution record. Sections §1–§3 (question, data, locked design) are unchanged.
 
 ---
 
@@ -15,7 +20,7 @@ projected future ecological conditions (non-stationarity) lead to better conserv
 acquisition decisions than assuming present conditions persist?**
 
 A few decisions are **locked and should not be reopened without explicit instruction**
-(they were each reached deliberately, some after substantial validation):
+(each was reached deliberately, several after substantial validation):
 
 1. The objective is **landscape-total**, not a protected-portfolio objective. The
    portfolio framing was explicitly rejected as ecologically unrealistic.
@@ -26,8 +31,14 @@ A few decisions are **locked and should not be reopened without explicit instruc
    through exactly one data column (`trans_prob`) and may be replaced by a new dataset
    or metric later. Model code must not bake in conversion assumptions elsewhere.
 
-A consequence worth internalizing early (Section 4.3): under the *current* conversion
-data the three models separate only modestly, and this is expected, not a bug.
+**Headline finding (new this session).** Foresight matters, and substantially. Across the
+four climate scenarios the foresighted (rolling) policy beats the myopic policy by
+**~13–15% of value_added** and the greedy status-quo heuristic by **~43–46%**. This
+*overturns* the earlier expectation (former §4.3) that the models would be "nearly
+indistinguishable." The separation is masked on total landscape J (where the gap is
+~0.09%, because only ~60 of 841 parcels are ever acquired) and is visible on
+**value_added = J − J_baseline**, the welfare acquisition actually creates. Read §4.3 for
+the numbers and the mechanism.
 
 ---
 
@@ -65,11 +76,12 @@ in review). That study found the models perform similarly under stationarity, bu
 foresighted (optimal) model outperforms under non-stationarity, with the advantage
 growing as volatility increases (reported gaps up to ~7.34% over myopic and ~14.42%
 over greedy on the toy problem). The present work asks whether that signal survives at
-realistic landscape scale with empirically derived inputs. **Important contrast:** the
-toy problem had a small landscape with a large acquisition fraction, so differences
-showed up directly in the total objective; the real model has ~841 parcels with a tiny
-acquisition fraction, which changes how (and where) the model differences are visible
-(§4.3).
+realistic landscape scale with empirically derived inputs. **It does — and on the
+decision-relevant metric (value_added) it is larger than the toy precedent:** ~13–15%
+over myopic and ~43–46% over greedy (§4.3). **Important contrast:** the toy problem had a
+small landscape with a large acquisition fraction, so differences showed up directly in
+the total objective; the real model has ~841 parcels with a tiny acquisition fraction, so
+the same signal is invisible on total J and must be read on value_added (§4.3).
 
 ---
 
@@ -97,6 +109,12 @@ The five analysis scenarios are the four climate futures **(45,wet), (45,dry),
 holds 2020 habitat constant from 2030 onward (the null against which non-stationarity
 is judged). Every scenario shares a single **2020 baseline row** (`rcp="baseline",
 gcm="baseline"`) that is stitched on as period 0.
+
+> **Note (new this session):** the shared-baseline stitch is correct for the *climate*
+> scenarios but was wrong for the stationary null — the baseline 2020 hazard is not ε, so
+> the stationary scenario was not actually stationary at the anchor year. This is now
+> corrected at scenario-assembly time for the stationary scenario only (§8.3); the
+> shared-baseline convention is otherwise preserved.
 
 ### 2.3 The `data_panel` object
 The pipeline's master output (`input_data/data_panel.rds` / `.csv`) is **long format,
@@ -195,9 +213,11 @@ reasons established both theoretically and by validation:
 1. **Global survival makes the rolling policy the provable welfare optimum.** With global
    `V`, the rolling re-solve loop reproduces the single full-horizon optimum exactly
    (property P2), so rolling is the correct upper-benchmark and is never beaten.
-2. **Global survival makes the stationary null exact.** Under a stationary scenario the
-   myopic frozen-future belief is *correct*, so myopic and rolling produce identical
-   schedules and identical J (property P3, difference = 0).
+2. **Global survival makes the stationary null exact.** Under a *genuinely* stationary
+   scenario the myopic frozen-future belief is *correct*, so myopic and rolling pose the
+   identical program every period (property P3). NB: this requires the stationary inputs
+   to be flat across the whole horizon, including the 2020 anchor — see §8.3 for the fix
+   that ensures this on the real data, and the reformulated P3 in §4.2.
 
 The forward-replanning alternative (`reset_at = t_now`) was implemented and tested. It
 **causes order violations** — myopic occasionally beats rolling — which is disqualifying,
@@ -222,9 +242,11 @@ forward-conditional re-planning optimizes a slightly wrong objective, off by a f
 All unacquired parcels are treated as deterministically available at each re-solve;
 conversion risk enters **only** through the `(1 − S)` weighting in the objective (and the
 `S` weighting in evaluation), **not** as a constraint that removes converted parcels from
-the choice set. This simplification is justified because realized conversion is near zero
-in the current data. If a high-conversion dataset is adopted, revisit whether converted
-parcels should be removed from availability.
+the choice set. This is justified because the **per-period** conversion probability is
+small, so few parcels actually convert out of availability within a decade — even though
+the *cumulative*, discounted loss-prevented value (value_added) is substantial enough for
+the policies to separate clearly (§4.3). If a high-conversion dataset is adopted, revisit
+whether converted parcels should be removed from availability.
 
 ### 3.7 Conversion risk is modular (LOCKED stance)
 Conversion enters the models in exactly two places — `compute_value_vector` (the `1 − S`
@@ -235,261 +257,225 @@ over the net-loss proxy vs. a vote-counting alternative (the two were found empi
 equivalent — median churn ratio 1.0 — so the existing net-loss method was kept), its
 drawbacks, and a broader finding: in this system the dominant axis of non-stationarity is
 **waterfowl redistribution** (abundance shifting across the landscape), not habitat loss
-per se. This is why conversion magnitude is low and provisional.
+per se. This is now a candidate explanation for *why* the models separate as much as they
+do despite low per-period conversion (§4.3, §6 item 5).
 
 ---
 
 ## 4. Current State
 
-### 4.1 Modeling scripts (written; not yet run in R/Gurobi by the author)
-Three R scripts continue the pipeline numbering and have been delivered:
-- **`07__ilp_core.R`** — shared engine: parameter block (δ, budget, scenario coding),
-  `build_scenario_matrices`, `compute_survival_matrix`, `compute_value_vector`,
-  `make_budget`, `solve_acquisition_ilp` (Gurobi wrapper, isolated "SOLVER CALL" block),
-  `run_greedy` / `run_myopic_ilp` / `run_rolling_horizon` / `run_full_horizon`,
+### 4.1 Modeling scripts (written and RUN on real data with Gurobi)
+Three R scripts continue the pipeline numbering:
+- **`07__ilp_core.R`** — shared engine: parameter block (δ, budget, scenario coding, and
+  a **Solver control** block — see §8.2), `build_scenario_matrices` (with the stationary
+  anchor correction, §8.3), `compute_survival_matrix`, `compute_value_vector`,
+  `make_budget`, `solve_acquisition_ilp` (Gurobi wrapper: cost-scaling, a per-solve time
+  cap, and an optional solve-log hook), the three policies + `run_full_horizon`,
   `evaluate_policy`, and synthetic-instance + brute-force helpers for validation.
 - **`08__run_models.R`** — driver: runs all three models on all five scenarios, scores
-  each against its scenario's true future, computes `J_baseline`, and writes a results
-  table + per-period landscape trajectories (RDS + CSV).
-- **`09__validation.R`** — correctness suite (run first, see §4.2), plus a documented
-  stub for the deferred MDP comparison.
+  each against its scenario's true future, computes `J_baseline`, and writes results +
+  per-period trajectories + a per-run solver-convergence summary (RDS + CSV). Has a
+  `REPRODUCIBLE` toggle (single-thread, fixed seed) for bit-reproducible reported numbers.
+- **`09__validation.R`** — correctness suite (run first, §4.2), plus a documented stub for
+  the deferred MDP comparison.
 
-### 4.2 Validation status
-The full modeling logic was validated in a **separate Python/PuLP solver harness**
-(R and Gurobi were unavailable in the build environment), including a line-for-line
-Python mirror of the R indexing to catch off-by-one/translation bugs. Five properties
-pass:
+### 4.2 Validation status (real data, Gurobi, capped solver)
+The suite is run with the production time cap active, so its tolerances are now coherent
+with how the policy is actually solved (see §8.2). The five properties:
 
-- **P1** ILP optimum equals brute-force optimum (small instance).
-- **P2** rolling re-solve loop equals the full-horizon single solve.
-- **P3** stationary null: myopic equals rolling exactly (identical schedules, J diff 0).
-- **P4** rolling ≥ myopic on every tested instance (no order violations).
-- **P5** LP relaxation ≥ ILP (small integrality gap, ~0.04–0.5%).
+- **P1** ILP optimum equals brute-force optimum (tiny synthetic instance; exact).
+- **P2** rolling ≈ full-horizon single solve (real scenario; checked up to solver
+  tolerance, since the single full-horizon solve is the hardest instance and may stop at
+  the cap while the rolling loop converges).
+- **P3** *reformulated.* The stationary null is now tested by its **solver-independent**
+  content rather than bit-exact schedule identity (which a capped, degenerate null solve
+  cannot satisfy even when correct): **(P3a)** the stationary benefit and (non-terminal)
+  hazard trajectories are flat; **(P3b)** the myopic *frozen* value vector equals the
+  rolling *true* value vector. The realized myopic-vs-rolling gap is reported for
+  information only. *Watch P3a's benefit check:* a FAIL there would mean the stationary
+  abundance trajectory is not flat — an upstream (01–04) data-construction matter, not a
+  solver one (§6 item 6).
+- **P4** rolling ≥ myopic on every scenario, checked up to solver tolerance (a margin of
+  ~2% of value_added — above capped-solver noise, below any genuine order violation).
+- **P5** LP relaxation ≥ ILP (holds for free under the cap: the LP bound dominates any
+  feasible incumbent).
 
-**The author must run `09__validation.R` first with a live Gurobi academic license to
-confirm these on the real data, then run `08__run_models.R`.** Solver is **Gurobi via the
-native R `gurobi` package**; CBC (the Python stand-in) blows up beyond ~40 parcels, which
-is why Gurobi is required at N = 841.
+Solver is **Gurobi via the native R `gurobi` package**; CBC blows up beyond ~40 parcels,
+which is why Gurobi is required at N = 841.
 
-### 4.3 Key empirical finding (set expectations accordingly)
-Under landscape-total with the **current low-conversion data, the myopic and rolling
-models are nearly indistinguishable**, and this is a structural feature, not an error.
-When little habitat is ever lost, an unacquired parcel still contributes ≈ `b` (because
-`S ≈ 1`), so the acquisition schedule barely moves the landscape total. The myopic-vs-
-rolling gap is real but modest and **grows with (a) conversion magnitude, (b) abundance
-"surprise" / back-loading, and (c) budget tightness**. The mechanism of foresight value
-is the **cost of delayed protection**: a myopic manager can self-correct by re-planning
-(it acquires a parcel once its value becomes apparent), but it protects later than the
-foresighted manager and loses some abundance to conversion in the interim.
+### 4.3 Key empirical finding (the headline)
+Under landscape-total with the current data, **foresight provides a large, consistent
+advantage on value_added** across all four climate scenarios:
 
-Two reporting consequences, both handled in `08`:
-- Because only ~5 of 841 parcels are acquired per period, `J_baseline` dominates `J`, so
-  gaps measured on **total J look tiny**. The driver therefore also reports
-  **`value_added = J − J_baseline`** (the welfare acquisition actually creates) and the gap
-  on that quantity, where the model ordering is visible.
-- Greedy diverges more than myopic does, because its benefit-cost criterion differs from
-  the welfare objective; greedy can differ from rolling even under stationarity.
+| metric (climate scenarios) | greedy | myopic | rolling |
+|---|---|---|---|
+| value_added gap vs rolling | ~43–46% | **~13–15%** | 0 (reference) |
+| gap on total landscape J    | ~0.3%  | ~0.09% | 0 |
+| parcels acquired (of 841)   | ~60–64 | ~55–57 | ~65–67 |
+| total spend                 | ~13.0B | ~10.5B | ~13.4B |
 
-If a higher-conversion dataset or a redistribution-aware risk metric is adopted, the
-separation should emerge with no code change (only `trans_prob` moves).
+Two things to internalize:
+
+1. **Read value_added, not total J.** Because only ~60 of 841 parcels are acquired,
+   `J_baseline` dominates `J`, so the gap on total J is ~0.09% and looks negligible. The
+   decision-relevant quantity is `value_added = J − J_baseline` (the welfare acquisition
+   creates), where the ordering is large and clear. The driver reports both.
+2. **The mechanism is the cost of delayed *and* under-deployed protection.** A myopic
+   manager re-plans each decade and self-corrects, but it protects later than the
+   foresighted manager and — notably — **systematically under-acquires and under-spends**
+   (~55 parcels / ~10.5B vs rolling's ~65 / ~13.4B). Under its frozen belief it does not
+   "see" enough value to deploy the full budget on parcels whose worth depends on a future
+   it cannot anticipate. Greedy diverges more still, because its benefit-cost criterion
+   differs from the welfare objective.
+
+**This supersedes the prior "nearly indistinguishable" expectation.** That impression came
+from looking at total-J gaps and at near-null diagnostics; on the climate scenarios with
+value_added, the separation is robust and well clear of any solver-precision floor (§8.2).
+A plausible driver of the magnitude is waterfowl **redistribution** (§3.7): even with low
+per-period conversion, anticipating *where abundance moves* is worth a lot — a candidate
+decomposition for the thesis (§6 item 5).
+
+### 4.4 The stationary null
+With the §8.3 anchor fix, the stationary scenario is a genuine null. Pre-fix it showed a
+spurious ~33% myopic value_added gap caused entirely by the non-ε 2020 baseline hazard;
+post-fix, value_added under stationarity is near zero (there is nothing to foresee) and
+myopic and rolling coincide up to solver tie-breaking. **Confirm this on your run** via
+P3a/P3b and the stationary row of `08`'s output.
 
 ---
 
 ## 5. Assumptions and Limitations (consolidated)
 
 - **Conversion metric is provisional.** Net-loss proxy from habitat erosion; low in
-  magnitude; may be replaced. Methods memo notes redistribution (not loss) is the
-  dominant non-stationarity signal — a candidate reason the current model separation is
-  muted, and a candidate direction for a better risk metric.
-- **Deterministic expected-value evaluation.** Survival `S` is used as an expected
-  weight; there is no Monte Carlo over realized conversion events. "Option A" treats
-  unacquired parcels as always available.
+  per-period magnitude; may be replaced. Methods memo notes redistribution (not loss) is
+  the dominant non-stationarity signal — now a candidate explanation for the *size* of the
+  observed separation, and a candidate direction for a better risk metric.
+- **Deterministic expected-value evaluation.** Survival `S` is used as an expected weight;
+  there is no Monte Carlo over realized conversion events. "Option A" treats unacquired
+  parcels as always available (justified by small per-period λ, §3.6).
 - **No spatial interactions.** Each EAU is independent — no adjacency, connectivity, or
-  contiguity constraints, and no spatial spillover in benefit. Acquisition value is
-  purely per-parcel.
+  contiguity constraints, and no spatial spillover in benefit.
 - **Acquisition is permanent and one-shot.** Acquire-once, no divestment; per-period
   budget with no rollover.
 - **Greedy uses benefit-cost ratio, not the welfare objective** — an intentional
-  status-quo baseline, but it means greedy is not a "welfare-optimal under wrong beliefs"
-  model the way myopic is.
-- **Scale/structure differs from the toy precedent.** Huge landscape + tiny acquisition
-  fraction means total-J differences are small even when per-decision differences exist;
-  interpret via `value_added`.
-- **Exact MDP benchmark is intractable.** A joint-landscape MDP has ~3^841 states.
-- **Not yet executed end-to-end in R/Gurobi.** Logic is Python-validated; the R/Gurobi run
-  on real data is the immediate next step and the first place real numbers appear.
-- **Verify scenario strings.** The `SCENARIOS` block in `07` hard-codes `rcp`/`gcm` levels
-  ("45","85","wet","dry","stationary"); confirm they match `data_panel` before trusting
-  output.
+  status-quo baseline, not a "welfare-optimal under wrong beliefs" model the way myopic is.
+- **Reported numbers carry a small solver-precision band.** Each solve is capped at 60 s
+  (§8.2); on the climate scenarios this leaves <~0.5% of value_added of uncertainty on the
+  myopic numbers, far below the ~13% effect, and it biases myopic *down* (so the comparison
+  is conservative). For exact reproducibility, run `08` with `REPRODUCIBLE = TRUE`
+  (single-thread).
+- **Exact MDP benchmark is intractable.** A joint-landscape MDP has ~3^841 states (§ stub
+  in `09`).
+- **Stationary abundance flatness is asserted, not yet confirmed on this machine.** The
+  anchor fix flattens the stationary *hazard*; P3a additionally checks that *benefit* is
+  flat. If it is not, the null is not exact and the cause is upstream (01–04).
 
 ---
 
 ## 6. Open Items / Next Steps
 
-1. **Run the models.** `09__validation.R` (with Gurobi) → confirm P1–P5 on real data →
-   `08__run_models.R` → inspect `model_results.csv` and trajectories.
-2. **Sensitivity analyses.** δ (discounting), `BUDGET_EAUS_PER_PERIOD` (default 5, range
-   2–10), and ε (conversion floor). The parameter blocks are at the top of `07` and `05`.
-3. **Conversion data / metric.** Possibly adopt a higher-conversion or redistribution-
-   aware risk layer; the model is built to absorb this through `trans_prob` alone. This is
-   the most likely lever to move the headline result.
-4. **MDP comparison (deferred).** Decide whether to pursue a like-for-like MDP benchmark;
-   it would require either a toy-sized landscape or a per-EAU/approximate value-function
-   decomposition. Interface stub is documented in `09`.
-5. **Thesis framing.** Communicate the muted-separation finding honestly: model choice
-   matters in proportion to how much the landscape is actually losing, and the value of
-   foresight here is the value of protecting at-risk, value-shifting parcels *earlier*.
+1. **Confirm the run.** `09__validation.R` (Gurobi) → P1–P5, with attention to P3a
+   (stationary benefit flatness) → `08__run_models.R` → inspect `model_results.csv`, the
+   trajectories, and `solver_convergence.csv`.
+2. **Lock reportable numbers.** Run `08` with `REPRODUCIBLE = TRUE` for the figures that
+   go in the thesis; report value_added gaps to ~2 significant figures (≈13% myopic,
+   ≈45% greedy) with the solver band noted.
+3. **Sensitivity analyses.** δ (discounting), `BUDGET_EAUS_PER_PERIOD` (default 5, range
+   2–10), and ε (conversion floor). Parameter blocks are at the top of `07` and `05`.
+4. **Conversion data / metric.** Possibly adopt a redistribution-aware or higher-conversion
+   risk layer; absorbed through `trans_prob` alone.
+5. **Decompose the foresight signal (thesis enrichment).** Myopic freezes *both* benefit
+   and hazard. Re-run freezing only `b` vs only `λ` to attribute the ~13% to anticipating
+   abundance redistribution vs habitat loss. If redistribution dominates, that is a sharper
+   and more novel framing than "conversion risk."
+6. **Stationary abundance flatness (if P3a fails).** If the stationary benefit trajectory
+   is not flat, decide upstream (01–04) whether the stationary scenario should hold 2020
+   abundance constant; this is a data-construction decision, not a model change.
+7. **MDP comparison (deferred).** Interface stub documented in `09`.
 
 ---
 
-## Appendix A — Locked decisions (quick reference)
-1. Objective: landscape-total. (Portfolio rejected.)
-2. Survival clock: global from t = 0, both models. (Forward re-planning rejected — order
-   violations.)
-3. Acquisition value `V[i,τ] = Σ_{t≥τ} δ^t b (1−S)` = expected loss prevented.
-4. Discount δ = 0.95/decade, absolute present value.
-5. Budget `B_t = BUDGET_EAUS_PER_PERIOD × median(cost_t)`; default 5, sensitivity 2–10.
-6. ILP: acquire-once + per-period budget (no rollover) + binary.
-7. Option A: conversion enters objective only, not the constraint set.
-8. Conversion proxy: existing net-loss method (script 05); kept modular.
-9. Solver: Gurobi via R `gurobi` package (academic license).
-10. Models evaluated against each scenario's *true* future (myopic is scored on reality
-    despite choosing under a fabricated future).
+## 7. Thesis framing
 
-## Appendix B — Key formulas
-- Survival: `S[i,t] = Π_{t'=0}^{t-1}(1 − λ[i,t'])`, `S[i,0] = 1`.
-- Acquisition value: `V[i,τ] = Σ_{t=τ}^{T} δ^t · b[i,t] · (1 − S[i,t])`.
-- Welfare decomposition: `J = J_baseline + Σ_i V[i,τ_i]`.
-- Evaluation: `J = Σ_i Σ_t δ^t · b[i,t] · w[i,t]`, `w = 1` if protected by t, else `S[i,t]`.
-- Hazard: `trans_prob = max(ε, (ps_t − ps_{t+1})/ps_t)`; 0 at terminal/no-habitat; ε under
-  stationary; 2020 = mean of RCP45/85 2020→2030.
-- Cost: `cost[i,t] = mean_fmv_per_ha[i] × area_ha × 1.02^(year − 2017)`.
-
-## Appendix C — File map
-- Data pipeline (complete): `01__create_EAUs.R`, `02__EAU_prop_suitable.R`,
-  `03__create_data_panel.R`, `04__benefit_data.R`, `05__risk_of_loss.R`, `06__cost_data.R`.
-- Models (written, pending R/Gurobi run): `07__ilp_core.R`, `08__run_models.R`,
-  `09__validation.R`.
-- Master data object: `input_data/data_panel.rds` / `.csv`.
-- Model outputs (created by `08`): `output_data/model_results.{rds,csv}`,
-  `output_data/model_trajectories.csv`.
-- Supporting docs: `methods_memo_conversion_risk.md` (conversion-risk rationale);
-  `Land_Acquisition_as_a_time.docx` (project write-up); `README.md`.
-- Prior MDP toy-problem scripts (precedent, reference only): `PPR_toyproblem.R`,
-  `PPR_nonStationary_example.r`, `greedy_solver.r`, `mdp_finite_horizon_nonStationary.r`,
-  `mdp_myopic_forward_look_policy.r`, `significance_tests.R`, `volatility.R`.
+Communicate the result precisely: model choice matters in proportion to how much
+foresight changes the *timing and amount* of protection, and that effect is large here
+(~13% myopic, ~45% greedy on value_added) even though it is invisible on the landscape
+total. The value of foresight is the value of protecting at-risk, value-shifting parcels
+*earlier and in greater number* than a present-assuming manager will. The honest caveats
+are the provisional conversion metric and the small solver-precision band on the capped
+solves; neither threatens the finding.
 
 ---
 
-## 8. Session Addendum — First R/Gurobi Run Attempt (2026-06-24)
+## 8. Resolution Record — First Full R/Gurobi Run (2026-06-24 → 2026-06-25)
 
-*Appended after a working session that attempted the first live run of `07`/`08`/`09`
-on the real data with Gurobi. This records what was changed, what passed, and the open
-questions — especially one structural finding about the stationary null (P3) that the
-earlier Python/PuLP validation never exercised. The §1–6 body above is unchanged; treat
-this section as the current front line.*
+*This section replaces the prior "session addendum." It records what was diagnosed and
+decided. The blow-by-blow diagnostic trail lives in `myopic_policy_diagnostic.md` (the
+former `P3_runtime_diagnostic_ledger.md`) and `archive/PROVENANCE.md`.*
 
-**Environment.** Gurobi 13.0.2 (academic license, active), R `gurobi` package working,
-Apple M2 Pro / 16 GB / macOS 15.7.7. `input_data/data_panel.rds` present and consumed
-successfully by the models.
+**Environment.** Gurobi 13.0.2 (academic license), R `gurobi` package, Apple M2 Pro /
+16 GB / macOS 15.7.7. `input_data/data_panel.rds` consumed successfully.
 
-### 8.1 Confirmed this session (can be trusted)
-- **Scenario strings verified.** The `SCENARIOS` block in `07` matches `data_panel`:
-  `rcp ∈ {"45","85","stationary"}`, `gcm ∈ {"wet","dry","stationary"}`, plus the shared
-  `baseline/baseline` period-0 row. **The §5/§6 "verify scenario strings" caveat can be
-  retired.**
-- **P1 PASS** (synthetic, instant).
-- **P2 PASS** (real scenario `rcp85_dry`; fast once the solver missteps below were undone).
+### 8.1 The runtime problem, and its resolution
+**Symptom (prior session).** The myopic solves on the stationary scenario reached an
+excellent incumbent in seconds, then took many minutes (the first real solve ran 866 s,
+~18M nodes) *proving* optimality.
 
-### 8.2 Code change made to `07__ilp_core.R` — cost scaling (KEEP)
-The first live run threw two Gurobi warnings: *large matrix coefficients* (`[1e+00,
-1e+10]`) and *large RHS* (`[1e+00, 3e+09]`), because `cost` is raw USD (billions for some
-EAUs). Inside `solve_acquisition_ilp`, costs and the budget RHS are now divided by
-`cost_scale <- 1e6` **before** being passed to Gurobi; the objective vector `V` is **not**
-scaled. This is identity-preserving (dividing both sides of the budget constraint by a
-constant leaves the feasible region and the optimum unchanged) and only improves
-conditioning — confirmed: matrix range dropped to `[1e+00, 1e+04]`, RHS to `[1e+00,
-3e+03]`, warnings gone. **Reporting is unaffected:** `data_panel$cost`, `make_budget`,
-and `evaluate_policy`'s `total_spend` all still operate in raw USD; the 1e6 factor lives
-and dies inside the solver wrapper. A short dead-code duplication (an unscaled
-`A`/`sense`/`rhs` build) was deleted; there is now a single scaled construction.
+**Diagnosis (this session, measured).** The slowness was the **myopic policy, not the
+scenario** (rolling closes the same instance in ~28 s); it was the **optimality-proof
+phase, not search** (the LP relaxation is tight, ~0.19%; the incumbent saturates early
+while only the bound descends); and it was driven by a large band of **co-valued
+schedules** produced by the flattened frozen-belief objective. A pick-stability experiment
+(the "Q4" ladder) showed the implemented period-1 picks converge smoothly with effort
+(realized error 3.11% → 1.53% → 0.30% of value_added at 5/15/60 s) rather than being
+exact, removable ties; and the climate scenarios' later-period solves close quickly. The
+earlier "exact ties vs intrinsic near-flatness" fork that organized the diagnostic ledger
+was thereby rendered **moot**: tie-break/coefficient reformulation was rejected (it did not
+close the gap and, in one variant, made runtime worse), and the resolution is policy-level.
 
-### 8.3 Solver-parameter missteps and the corrected understanding
-- **Tried and REVERTED:** `NumericFocus = 2` and `ScaleFlag = 3`. These were added on the
-  (mistaken) theory that the warnings were causing the slowdown. They forced slower
-  careful arithmetic on *every* solve and made the previously-fast **P2 hang**. Once the
-  data was scaled there was no numerical *failure* to fix, only warnings, so they bought
-  nothing. Removing them restored P2. **Do not re-add them.**
-- **Key correction on `MIPGap`.** The real slowdown is **not numerical** — it is a MIP
-  optimality-gap-closing problem on the **stationary** scenario: Gurobi finds a
-  near-optimal incumbent within seconds, then explores millions of nodes proving
-  optimality because (a) the per-period budget knapsack creates many near-tied solutions
-  and (b) the objective range stays wide (`[1e-07, 2e+04]`, untouched by cost scaling
-  since those are the `V` values), giving a weak LP bound that descends very slowly.
-  **Gurobi's default `MIPGap` is `1e-4`. The grind observed IS the `1e-4` grind** —
-  setting `MIPGap = 1e-4` explicitly is a no-op and will NOT speed anything up. Loosening
-  to `1e-3` was considered and **rejected**: a 0.1% solver gap is comparable to the muted
-  myopic-vs-rolling effect size (§4.3) and could contaminate the headline result in `08`.
-- **Recommended next lever (keeps the tight `1e-4` bound):** attack the *bound*, not the
-  gap — `MIPFocus = 3` (directs effort at the best bound, which is the bottleneck) and
-  optionally `Cuts = 2`. These are correctness-neutral (affect runtime only). They may
-  only partly help a fundamentally degenerate instance; the fallback is to accept the
-  runtime (only the stationary scenario grinds, and only its first full solve is
-  expensive).
-- **Housekeeping:** `OutputFlag` is currently `1` for debugging. Set it back to `0` in the
-  production run, especially in `08` (rolling/myopic call the solver ~9× per scenario ×
-  5 scenarios — verbose logs otherwise).
+**Decision (in production).** Cap each solve at **60 s** (`SOLVER_TIME_LIMIT` in `07`).
+This is justified because (i) each policy implements only the current period and
+re-optimizes, so the expensive certification of the discarded tail never affects the
+enacted trajectory; (ii) the cap binds in only 1–2 of the 9 myopic solves per climate
+scenario, each at ≤0.05% gap, leaving <~0.5% realized uncertainty on value_added against a
+~13% effect; and (iii) truncation only biases myopic *down*, so the rolling-vs-myopic
+comparison is conservative under the cap. `MIPGap` was **not** loosened (the bound is
+already tight; the lever is wall-time, not gap).
 
-### 8.4 Structural finding on P3 (IMPORTANT — unresolved)
-P3 requires myopic == rolling **exactly** on the stationary null. The premise (§3.4) is
-that under stationarity the myopic frozen-future belief is *correct*. This holds in the
-**synthetic** instances the Python harness used (`make_synthetic_instance` builds the
-stationary hazard constant across **all** periods including t = 0), which is why P3
-validated there.
+### 8.2 Solver control block (`07`) — KEEP
+The Gurobi call now reads its parameters from a documented **Solver control** block:
+`SOLVER_TIME_LIMIT = 60`, `SOLVER_MIP_GAP = 1e-4`, `SOLVER_THREADS = 0L` (set 1L for
+reproducibility), `SOLVER_SEED = 1L`, `SOLVER_OUTPUT = 0L` (quiet). The earlier
+**cost-scaling** fix is retained: inside `solve_acquisition_ilp`, costs and the budget RHS
+are divided by `cost_scale = 1e6` before Gurobi (identity-preserving; only improves
+conditioning; reporting stays in raw USD). A small, inert **solve-log hook** records each
+solve's status/gap/runtime when a driver creates a `.SOLVE_LOG` (used by `08`'s
+convergence summary); it is otherwise a no-op. *Do not re-add `NumericFocus`/`ScaleFlag`*
+(tried last session, reverted — they slowed every solve for no benefit once data was
+scaled).
 
-On the **real** data the premise breaks at exactly one period. The stationary scenario's
-period-0 (2020) row is the **shared 2020 baseline** (`rcp="baseline"`), whose `trans_prob`
-is the mean of the floored RCP 4.5/8.5 2020→2030 transitions — **not ε**. From 2030 onward
-the stationary hazard is ε (confirmed in script `05`). So at the **2020 decision**, myopic
-freezes that baseline hazard and projects it forward, while rolling sees the hazard drop
-to ε from 2030 on. Myopic's belief is correct from 2030 onward but **wrong at 2020**.
+### 8.3 Stationary null correction (`07`, `build_scenario_matrices`) — KEEP
+Prior session identified that the stationary scenario inherited the shared 2020 baseline
+hazard (the mean of floored RCP45/85 2020→2030 transitions, > ε) instead of ε, making it
+non-stationary at the anchor and producing a spurious ~33% myopic gap. Fix: for the
+stationary scenario only, set the 2020 hazard to the scenario's own ε floor
+(`lam[,1] <- lam[,2]`). This is applied at matrix-assembly time and **resolves the §8.5
+design tension cleanly** — it does not touch script `05` or the data panel, and it
+preserves the shared-baseline convention for the climate scenarios (which correctly use the
+baseline 2020 hazard). It flattens the *hazard*; the *benefit*-flatness precondition is now
+certified separately by P3a.
 
-**Consequence:** myopic and rolling can make different 2020 purchases, which would trip
-P3's bit-exact schedule-identity assertion **for a real structural reason, independent of
-any solver gap**. This is a synthetic-vs-real-data mismatch, not necessarily a model bug —
-and it is potentially interesting for the thesis: the stationary "null" is not perfectly
-stationary at the anchor year because of the shared-baseline stitch (§2.2).
+### 8.4 Validation reformulation (`09`) — KEEP
+With the cap active, the original `1e-6`/bit-exact tolerances were incompatible with how the
+model is solved. P3 was reformulated to the solver-independent null test (§4.2); P2 and P4
+were given tolerances coherent with the cap (≈ value_added scale); P1 and P5 were unchanged.
+The realized stationary myopic-vs-rolling gap is now reported as information, not asserted.
 
-P2 and P5 do **not** share this exposure and need no tolerance changes: rolling's first
-solve is byte-identical to the full-horizon solve (so they stay deterministically equal at
-any gap), and the gap only makes P5's `LP ≥ ILP` bound easier to satisfy.
-
-### 8.5 Decision tree for P3 (deferred to the author)
-Do **not** pre-emptively loosen P3's tolerance; the correct fix depends on the failure
-mode observed. After re-running P3, read its two `report(...)` lines:
-- **`J_myopic ≈ J_rolling` to ~`1e-4`, schedules differ** → the 2020 baseline-vs-ε
-  asymmetry and/or knapsack near-ties. Author's choice: **(a)** relax P3 to "equal within
-  tolerance" and document the anchor-year wrinkle, or **(b)** make the stationary scenario
-  use ε at 2020 as well — a **script-`05`** change that collides with the locked "every
-  scenario shares one 2020 baseline row" convention (§2.2), so a genuine design tension,
-  not a free fix.
-- **`J` differs by more than ~`1e-4`** → more substantive divergence; understand it before
-  changing any tolerance.
-
-### 8.6 Where the project is being left / immediate next step
-1. Add `MIPFocus = 3` to the Gurobi params in `solve_acquisition_ilp` (keep
-   `OutputFlag = 1` for now), leave `MIPGap` at default, and **re-run P3 alone**. Report
-   the two `report(...)` lines (the myopic/rolling `J` values and the schedule-identity
-   PASS/FAIL). That single observation determines whether the remaining work is a
-   tolerance change, a data decision, or nothing.
-2. Then complete **P4** and confirm **P5** on real data.
-3. Once P3–P5 are settled, reconcile the body: §4.1/§4.2 ("not yet run in R/Gurobi") and
-   §6 item 1 should be updated to reflect the live run; the §5/§6 scenario-string caveat
-   is already retired (§8.1).
-4. `08__run_models.R` has **not** been run yet. Set `OutputFlag = 0` there first.
-
-**Open questions carried forward:** (i) Does `MIPFocus = 3`/`Cuts` make the stationary
-gap close in acceptable time at `1e-4`, or must the runtime simply be accepted? (ii) Is
-the 2020 baseline-hazard-under-stationary an artifact to absorb in P3's check, or a data
-decision (ε at 2020) that touches the shared-baseline convention? (iii) Do P4/P5 hold on
-real data under the scaled, default-gap solver?
+### 8.5 What changed vs the prior plan
+The prior session's recommended next lever (`MIPFocus = 3` / `Cuts = 2` to attack the
+bound) was **not** adopted: the pick-stability and convergence measurements showed a time
+cap is provably harmless and sufficient, so the simpler, better-justified fix won. The
+prior worry that loosening precision could "contaminate the muted effect" was also
+re-examined and found to conflate the solver's internal gap with the reported value_added;
+the cap controls wall-time, not gap, and the headline effect is an order of magnitude
+larger than the residual either way.

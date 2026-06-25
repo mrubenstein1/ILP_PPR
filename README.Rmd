@@ -1,61 +1,97 @@
 ---
-title: "README"
+title: "PPR Land Acquisition Under Climate Non-Stationarity"
 output: html_document
-date: "2026-05-05"
+date: "2026-06-25"
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-## ILP Formulation of the PPR Problem
+## Overview
 
-This analysis examines the aquisition optimization problem of iteratively acquiring habitat for waterfowl conservation in the Prairie Pothole Region of the United States. It compares 3 decision models (a greedy heuristic, a myopic ILP, and a time-dependent ILP) and assesses their performance under conditions of ecological non-stationarity. 
+This project asks whether **accounting for projected future ecological conditions
+(non-stationarity) leads to better land-acquisition decisions for waterfowl conservation
+in the U.S. Prairie Pothole Region (PPR) than assuming present conditions persist.** It
+builds three decision models and compares their performance across climate-change
+scenarios and a stationary null.
+
+The three models acquire land period by period (decadal steps, 2020–2100) under a budget:
+
+- **Greedy** — status-quo heuristic: rank parcels by current benefit-to-cost ratio, buy
+  down the list. No foresight.
+- **Myopic ILP** — re-optimizes each decade but freezes current benefit and hazard and
+  assumes they persist (a fabricated stationary future); implements the current decade,
+  then re-solves.
+- **Rolling-horizon ILP** — same structure, but uses the true projected trajectories. The
+  foresighted benchmark.
+
+The spatial unit is the **EAU** (Equal Area Unit, ~282 km²). After dropping 4 Wetland
+Management Districts, the analysis uses **841 EAUs across 20 WMDs**, over **9 decadal
+periods** and **5 scenarios** (RCP 4.5/8.5 × wet/dry, plus a stationary null).
+
+## Key result
+
+Foresight matters, and substantially. Across the four climate scenarios, the rolling
+policy beats myopic by **~13–15%** and greedy by **~43–46%** on **value_added** (the
+conservation value acquisition actually creates, `J − J_baseline`). The gap is invisible
+on the total landscape objective `J` (~0.09%, because only ~60 of 841 parcels are ever
+acquired) and must be read on value_added — the driver reports both. Myopic also
+systematically under-acquires and under-spends its budget relative to rolling.
+
+**For the full rationale, locked design decisions, and limitations, read
+`PPR_project_handoff.md`.** For the solver-runtime investigation and its resolution, read
+`myopic_policy_diagnostic.md`.
+
+## How to run
+
+Requires R with the native **Gurobi** R package and an active (academic) license; CBC and
+other open solvers do not scale to N = 841.
+
+1. Data pipeline (scripts `01`–`06`) — already built; produces
+   `input_data/data_panel.rds`.
+2. `09__validation.R` — run first, with Gurobi active, to certify the formulation (P1–P5).
+3. `08__run_models.R` — runs all three models on all five scenarios and writes results to
+   `output_data/`. Set `REPRODUCIBLE <- TRUE` (top of the script) for bit-reproducible
+   reported numbers.
+
+Outputs: `output_data/model_results.{rds,csv}`, `model_trajectories.csv`, and
+`solver_convergence.csv` (a per-run record of how often the per-solve time cap bound).
+
+## Scripts
+
+**Data pipeline (complete):**
+
+1. **`01__create_EAUs`** — grids the WMD shapefile into EAUs; builds an EAU↔WMD lookup.
+2. **`02__EAU_prop_suitable`** — proportion of suitable habitat per EAU from USGS FOREsce
+   land-cover projections, over time and by RCP. (Full resampling run ~6–10 min.)
+3. **`03__create_data_panel`** — assembles the long-format data panel (EAU × year × RCP ×
+   GCM), including wet/dry duplication and the stationary scenario.
+4. **`04__benefit_data`** — waterfowl-abundance benefit, interpolated to decadal steps and
+   distributed within WMDs by suitable habitat. **Drops the 4 excluded WMDs** (→ 841 EAUs).
+5. **`05__risk_of_loss`** — conversion-risk hazard (`trans_prob`), a net-loss/erosion
+   proxy with a small background floor ε. Provisional; isolated to this one column so the
+   metric can be swapped without touching model code.
+6. **`06__cost_data`** — acquisition cost per EAU (Nolte 2020 FMV; 2%/yr inflation).
+
+**Modeling core:**
+
+7. **`07__ilp_core`** — shared engine sourced by `08` and `09`: scenario-matrix assembly,
+   survival/value/budget functions, the Gurobi solver wrapper, the three policies, and
+   evaluation. Solver settings (a 60 s per-solve time cap, threads, seed, output) live in a
+   **Solver control** parameter block near the top.
+8. **`08__run_models`** — driver: runs the three models on all scenarios, scores each
+   against its true future, and writes results, trajectories, and a convergence summary.
+9. **`09__validation`** — correctness suite (P1–P5) plus a documented stub for the deferred
+   MDP comparison.
+
+**Diagnostics (`10`–`14`) — archived.** These resolved the myopic-policy runtime question;
+they are not part of the active pipeline. They (and their outputs) live in `archive/` with
+a `PROVENANCE.md` mapping each to the production decision it justifies.
 
 ## References and sources
-sources that helped inform this work
 
-
-## Overview of Key Scripts
-
-1. **Create_EAUs**: takes the shapefile of waterfowl management districts (WMDs) in the PPR and breaks them into our spatial unit of analysis (equal area units, EAUs). Creates a lookup table to match EAUs to WMDs for future reference and calculations. 
-
-2. **EAU_prop_suitable**: calculates the proportion of suitable habitat in each EAU, based on landcover data from the USGS FOREsce model. Output is the basis for the full data panel, which defines percent suitable habitat for each EAU over time. Note run time for full resampling is between 6-10 minutes. 
-
-2a. **viz_eau**: currently just a sanity check on the prop_suitable data. Make sure that we see some reasonable changes over time, and whether there are differences between the two RCPs. Create a map to show changes in proportion suitable habitat from first to last year
-
-3. **create_data_panel**: takes the outputs of EAU_prop_suitable (the datatable of percent suitable habitat per year per EAU), and uses it to construct the final data table. The final data panel (i.e., final product of data import/manipulation) is be a dataframe of EAU per time period per RCP per GCM: 
-•	EAU: 1168 (1210- 41 EAUs without landcover data)
-•	Time period: 9
-•	RCP: 2
-•	GCM: 2
-•	Stationary or no: 1
-•	Total rows: 54,450
-
-Columns describe each EAU in these states, and cover the following variables:
-•	% suitable habitat: percent of land cover of a class suitable for waterfowl breeding
-•	Abs_density: absolute density of waterfowl breeding pairs, assuming homogenous distribution from WMD scale
-•	Scaled_density:  scaled density of waterfowl breeding pairs (absolute density scaled to EAU level based on % suitable habitat)
-•	Trans_prob: transition probability from suitable to unsuitable
-•	Cost: cost of acquisition.
-
-Data on waterfowl density, cost, and transition probabilities will be added to this table.
-
-4. **benefit_data**: import benefit (i.e., waterfowl density) data, restructures around our analytical GCM x RCP structure, and conducts linear interpolation to match decadal decision points. Matches benefit data to full data panel. Distributes benefit data by EAU (i.e., within WMDs) by % suitable habitat. This is also the script where we drop the 4 WMDs that were ultimately excluded from the analysis (due to either poorly performing hydrological model or mismatch with landcover data extent). Final panel to be used for further analysis is *data_panel*
-
-4a. **viz_benefit**: graphs to explore and gut check benefit data
-
-5. **risk of loss**: characterize the risk of loss/conversion. goal here is to describe the risk of a given eau losing its conservation/habitat value if not acquired. currently, we use a method of using "net habitat loss/erosion" as a proxy for conversion probability, but this will likely be updated. 
-
-5a. **diagnostic_vote count** 
-
-6. **cost_data**: calculate cost per EAU for use in ILP. based on Nolte 2020. Assumes flat 2% inflation
-
-7. **ilp_core**: serves as a library to define all terms in the ILP model. acts as source code for script 8 and 9. 
-
-8. **run_models**:
-
-9. **validation**: 
-
-10. **diagnose stationary gap**: figure out why runtime is so slow in P3. 
-
+Land-cover projections: USGS FOREsce (GCAM Reference). Acquisition cost: Nolte 2020,
+*PNAS* 117(47):29577 (PLACES FMV raster; Dryad doi:10.5061/dryad.np5hqbzq9). EAU gridding
+adapted from a script by Heini Kujala. Prior toy-problem precedent: Rubenstein et al.,
+*Conservation Biology* (in review).
