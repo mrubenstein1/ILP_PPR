@@ -31,7 +31,7 @@ source("07__ilp_core.R")
 # so the figures are exactly reproducible. Set FALSE for a faster, multi-threaded
 # pass (results then carry ~0.3%-scale run-to-run wobble — fine for exploration,
 # and far below the ~13% effect, but pin this TRUE for anything you report).
-REPRODUCIBLE <- TRUE
+REPRODUCIBLE <- FALSE
 if (REPRODUCIBLE) SOLVER_THREADS <- 1L
 
 # ── 0. Load the data panel ────────────────────────────────────────────────────####
