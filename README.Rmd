@@ -12,12 +12,15 @@ knitr::opts_chunk$set(echo = TRUE)
 
 This analysis examines the aquisition optimization problem of iteratively acquiring habitat for waterfowl conservation in the Prairie Pothole Region of the United States. It compares 3 decision models (a greedy heuristic, a myopic ILP, and a time-dependent ILP) and assesses their performance under conditions of ecological non-stationarity. 
 
+## References and sources
+sources that helped inform this work
+
 
 ## Overview of Key Scripts
 
 1. **Create_EAUs**: takes the shapefile of waterfowl management districts (WMDs) in the PPR and breaks them into our spatial unit of analysis (equal area units, EAUs). Creates a lookup table to match EAUs to WMDs for future reference and calculations. 
 
-2. **EAU_prop_suitable**: calculates the proportion of suitable habitat in each EAU, based on landcover data from the USGS FOREsce model. Output is the basis for the full data panel, which defines percent suitable habitat for each EAU over time
+2. **EAU_prop_suitable**: calculates the proportion of suitable habitat in each EAU, based on landcover data from the USGS FOREsce model. Output is the basis for the full data panel, which defines percent suitable habitat for each EAU over time. Note run time for full resampling is between 6-10 minutes. 
 
 2a. **viz_eau**: currently just a sanity check on the prop_suitable data. Make sure that we see some reasonable changes over time, and whether there are differences between the two RCPs. Create a map to show changes in proportion suitable habitat from first to last year
 
@@ -42,9 +45,17 @@ Data on waterfowl density, cost, and transition probabilities will be added to t
 
 4a. **viz_benefit**: graphs to explore and gut check benefit data
 
-5. **risk of loss**: goal here is to describe the risk of a given eau losing its conservation/habitat value if not acquired. 
+5. **risk of loss**: characterize the risk of loss/conversion. goal here is to describe the risk of a given eau losing its conservation/habitat value if not acquired. currently, we use a method of using "net habitat loss/erosion" as a proxy for conversion probability, but this will likely be updated. 
 
-5a. **diagnostic_vote count**
+5a. **diagnostic_vote count** 
 
-6. **cost_data**: calculate cost per EAU for use in ILP. 
+6. **cost_data**: calculate cost per EAU for use in ILP. based on Nolte 2020. Assumes flat 2% inflation
+
+7. **ilp_core**: serves as a library to define all terms in the ILP model. acts as source code for script 8 and 9. 
+
+8. **run_models**:
+
+9. **validation**: 
+
+10. **diagnose stationary gap**: figure out why runtime is so slow in P3. 
 

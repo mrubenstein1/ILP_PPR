@@ -216,14 +216,6 @@ solve_acquisition_ilp <- function(V_mat, cost_mat, budget, avail, periods,
   row_once <- match(grid$eau_idx, avail)
   row_budg <- n_av + match(grid$period, periods)
 
-  A <- Matrix::sparseMatrix(
-    i    = c(row_once, row_budg),
-    j    = c(seq_len(nvar), seq_len(nvar)),
-    x    = c(rep(1, nvar), costs),
-    dims = c(n_av + n_pe, nvar)
-  )
-  sense <- rep("<=", n_av + n_pe)
-  rhs   <- c(rep(1, n_av), budget[periods])
 
   # ---- SOLVER CALL (Gurobi) -------------------------------------------------
   if (!requireNamespace("gurobi", quietly = TRUE))
@@ -255,9 +247,7 @@ solve_acquisition_ilp <- function(V_mat, cost_mat, budget, avail, periods,
     modelsense = "max"
   )
   res <- gurobi::gurobi(model, params = list(
-    OutputFlag   = 0,
-    NumericFocus = 2,
-    ScaleFlag    = 3
+    OutputFlag   = 1
   ))
   # ---------------------------------------------------------------------------
 
