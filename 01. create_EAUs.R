@@ -21,6 +21,9 @@ library(purrr)
 library(ggplot2)
 library(forcats)
 library(Matrix)
+library(scales)
+library(flextable)
+library(patchwork)
 
  
 ##### 1. Import Data ##########
