@@ -1,0 +1,6 @@
+Scenario,Greedy gap %,Greedy Δpairs,Myopic gap %,Myopic Δpairs
+RCP 4.5 wet,45.07%,"94,752",13.77%,"28,950"
+RCP 4.5 dry,45.08%,"69,094",13.35%,"20,462"
+RCP 8.5 wet,45.54%,"104,915",14.92%,"34,371"
+RCP 8.5 dry,43.35%,"54,229",15.28%,"19,109"
+Stationary,1.75%,<1,1.28%,<1

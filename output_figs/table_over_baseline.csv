@@ -1,0 +1,6 @@
+Scenario,Greedy % over baseline,Greedy Δpairs,Myopic % over baseline,Myopic Δpairs,Rolling % over baseline,Rolling Δpairs
+RCP 4.5 wet,0.38%,"115,494",0.60%,"181,296",0.69%,"210,247"
+RCP 4.5 dry,0.34%,"84,161",0.53%,"132,792",0.61%,"153,254"
+RCP 8.5 wet,0.37%,"125,477",0.58%,"196,022",0.68%,"230,393"
+RCP 8.5 dry,0.32%,"70,856",0.47%,"105,977",0.56%,"125,086"
+Stationary,<0.0001%,9,<0.0001%,9,<0.0001%,9

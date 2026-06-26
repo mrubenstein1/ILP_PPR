@@ -5,7 +5,9 @@
 # Reads the two model-output CSVs and writes a results table (flextable -> .docx/.png
 # + a plain .csv) and six figures (.png at 300 dpi + vector .pdf) to OUT_DIR.
 #
-#   table_gaps        gap vs. rolling, by scenario  (value-added %, total-J %, Δpairs)
+#   table_over_baseline   value each model creates over the do-nothing baseline
+#                         (% improvement and Δpairs); all three models
+#   table_gap_vs_rolling  greedy/myopic value-added gap vs. rolling (gap % and Δpairs)
 #   fig1_gaps         value-added gaps, greedy vs. myopic, by scenario
 #   fig2_delta_pairs  absolute pairs left on the table, by scenario
 #   fig3_wetdry       wet vs. dry: stakes (A) vs. foresight premium (B)
@@ -71,7 +73,7 @@ fmt_pct <- function(x) vapply(x, function(v) {
   if (is.na(v)) return(NA_character_)
   if (v < 1e-4) return("<0.0001%")
   if (v < 1) { s <- formatC(v, format = "f", digits = 4)
-               s <- sub("0+$", "", s); s <- sub("\\.$", "", s); return(paste0(s, "%")) }
+  s <- sub("0+$", "", s); s <- sub("\\.$", "", s); return(paste0(s, "%")) }
   paste0(formatC(v, format = "f", digits = 2), "%")
 }, character(1))
 fmt_pairs <- function(x) ifelse(abs(x) < 1, "<1", formatC(round(x), format = "d", big.mark = ","))
@@ -99,11 +101,20 @@ theme_set(theme_ppr())
 save_fig <- function(p, name, w, h) {
   ggsave(file.path(OUT_DIR, paste0(name, ".png")), p, width = w, height = h, dpi = DPI, bg = "white")
   if (SAVE_PDF) {
-    ok <- tryCatch({ ggsave(file.path(OUT_DIR, paste0(name, ".pdf")), p,
-                            width = w, height = h, device = cairo_pdf, bg = "white"); TRUE },
-                   error = function(e) FALSE)
-    if (!ok) ggsave(file.path(OUT_DIR, paste0(name, ".pdf")), p, width = w, height = h, bg = "white")
+    # Prefer cairo_pdf (nice font embedding) but fall back to the base 'pdf' device if
+    # cairo is unavailable. On Windows builds without cairo this surfaces as a WARNING
+    # ("failed to load cairo DLL"), not an error, so we catch warnings too and fall back
+    # quietly; suppressWarnings on the fallback hides any glyph-substitution notices.
+    ok <- tryCatch(
+      { ggsave(file.path(OUT_DIR, paste0(name, ".pdf")), p, width = w, height = h,
+               device = cairo_pdf, bg = "white"); TRUE },
+      warning = function(w) FALSE,
+      error   = function(e) FALSE)
+    if (!ok)
+      suppressWarnings(ggsave(file.path(OUT_DIR, paste0(name, ".pdf")), p,
+                              width = w, height = h, bg = "white"))
   }
+  print(p)            # also render to the active device (RStudio Plots pane)
   invisible(p)
 }
 
@@ -122,57 +133,112 @@ gaps <- res %>%
          model  = factor(model, levels = c("greedy", "myopic")))
 
 # ══════════════════════════════════════════════════════════════════════════════
-# TABLE  —  gap vs. rolling, by scenario  (flextable + csv)
+# TABLES  —  (1) value created over baseline, all models;  (2) gap vs. rolling
+# Each written as flextable -> .docx (+ .png if webshot2/magick present) and a .csv.
 # ══════════════════════════════════════════════════════════════════════════════
-tbl <- gaps %>%
-  transmute(scenario, model,
-            gva = gap_value_added_pct, gj = gap_J_pct, dp = dpairs) %>%
-  pivot_wider(names_from = model, values_from = c(gva, gj, dp)) %>%
-  arrange(scenario) %>%
-  transmute(
-    Scenario              = SCEN_LAB1[as.character(scenario)],
-    `Greedy gap (VA)`     = fmt_pct(gva_greedy),
-    `Myopic gap (VA)`     = fmt_pct(gva_myopic),
-    `Greedy gap (J)`      = fmt_pct(gj_greedy),
-    `Myopic gap (J)`      = fmt_pct(gj_myopic),
-    greedy_dpairs         = fmt_pairs(dp_greedy),
-    myopic_dpairs         = fmt_pairs(dp_myopic)
-  )
-# give the two Δpairs columns their display names (Δ written portably)
-names(tbl)[6:7] <- c(paste0("Greedy ", DELTA, "pairs"), paste0("Myopic ", DELTA, "pairs"))
 
-write_csv(tbl, file.path(OUT_DIR, "gaps_vs_rolling.csv"))
+# percent formatter with 2 decimals (for the over-baseline %, which run ~0.3–0.7%)
+fmt_pct2 <- function(x) ifelse(x < 1e-4, "<0.0001%", paste0(formatC(x, format = "f", digits = 2), "%"))
+DP <- paste0(DELTA, "pairs")
 
-greedy_cols <- grep("Greedy", names(tbl), value = TRUE)
-myopic_cols <- grep("Myopic", names(tbl), value = TRUE)
-
-ft <- flextable(tbl) |>
-  bold(part = "header") |>
-  bg(part = "header", bg = GREEN_HEADER) |>
-  color(part = "header", color = "white") |>
-  align(align = "center", part = "all") |>
-  align(j = "Scenario", align = "left", part = "all") |>
-  bold(j = "Scenario", part = "body") |>
-  color(j = greedy_cols, color = COL_MODEL_TXT[["greedy"]], part = "body") |>
-  color(j = myopic_cols, color = COL_MODEL_TXT[["myopic"]], part = "body") |>
-  bg(i = seq(2, nrow(tbl), by = 2), bg = "#f5f5f2", part = "body") |>
-  border_remove() |>
-  hline_bottom(part = "header", border = officer::fp_border(color = "white", width = 1)) |>
-  padding(padding.top = 4, padding.bottom = 4, part = "all") |>
-  add_footer_lines(values = paste0(
-    "value-added = J - J_baseline (discounted duck-pairs of prevented loss).  ",
-    DELTA, "pairs = rolling value-added - model value-added.")) |>
-  fontsize(size = 8.5, part = "footer") |>
-  color(color = "grey40", part = "footer") |>
-  set_caption("Gap vs. rolling (deterministic foresight), by scenario") |>
-  autofit()
-
-save_as_docx(ft, path = file.path(OUT_DIR, "table_gaps.docx"))
-if (TABLE_PNG) {
-  ok <- tryCatch({ save_as_image(ft, path = file.path(OUT_DIR, "table_gaps.png")); TRUE },
-                 error = function(e) FALSE)
-  if (!ok) message("  table PNG skipped (needs webshot2 + magick). .docx and .csv written.")
+# Build a styled flextable with a two-level header that groups paired columns under a
+# model label. `df` has Scenario in column 1 and value columns thereafter; `groups`
+# and `subs` are one entry per value column. Model text colours follow the palette.
+style_grouped_table <- function(df, groups, subs, caption, footer_text) {
+  vcols  <- names(df)[-1]
+  rle_g  <- rle(groups)
+  top_w  <- c(1, rle_g$lengths)
+  top_l  <- c("Scenario", rle_g$values)
+  seps   <- c(1, head(1 + cumsum(rle_g$lengths), -1))        # right-edge group separators
+  txtcol <- c(COL_MODEL_TXT, rolling = unname(COL_MODEL[["rolling"]]))
+  bd     <- officer::fp_border(color = "#dddddd", width = 1)
+  
+  ft <- flextable(df)
+  ft <- set_header_labels(ft, values = setNames(as.list(c("", subs)), c("Scenario", vcols)))
+  ft <- add_header_row(ft, top = TRUE, values = top_l, colwidths = top_w)
+  ft <- merge_at(ft, i = 1:2, j = 1, part = "header")
+  ft <- bg(ft, part = "header", bg = GREEN_HEADER)
+  ft <- color(ft, part = "header", color = "white")
+  ft <- bold(ft, part = "header")
+  ft <- align(ft, align = "center", part = "all")
+  ft <- align(ft, j = 1, align = "left", part = "all")
+  ft <- valign(ft, j = 1, valign = "center", part = "header")
+  ft <- bold(ft, j = 1, part = "body")
+  for (g in unique(groups)) {
+    gcols <- vcols[groups == g]; col <- txtcol[[tolower(g)]]
+    if (!is.null(col) && length(gcols)) ft <- color(ft, j = gcols, color = col, part = "body")
+  }
+  ft <- bg(ft, i = seq(2, nrow(df), by = 2), bg = "#f5f5f2", part = "body")
+  ft <- border_remove(ft)
+  ft <- hline(ft, i = 1, part = "header", border = officer::fp_border(color = "white", width = 1))
+  ft <- vline(ft, j = seps, border = bd, part = "header")
+  ft <- vline(ft, j = seps, border = bd, part = "body")
+  ft <- padding(ft, padding.top = 4, padding.bottom = 4, part = "all")
+  ft <- add_footer_lines(ft, values = footer_text)
+  ft <- fontsize(ft, size = 8.5, part = "footer")
+  ft <- color(ft, color = "grey40", part = "footer")
+  ft <- set_caption(ft, caption)
+  autofit(ft)
 }
+
+save_table <- function(ft, df_csv, stem) {
+  write_csv(df_csv, file.path(OUT_DIR, paste0(stem, ".csv")))
+  save_as_docx(ft, path = file.path(OUT_DIR, paste0(stem, ".docx")))
+  if (TABLE_PNG) {
+    ok <- tryCatch({ save_as_image(ft, path = file.path(OUT_DIR, paste0(stem, ".png"))); TRUE },
+                   error = function(e) FALSE)
+    if (!ok) message("  ", stem, ".png skipped (needs webshot2 + magick); .docx and .csv written.")
+  }
+}
+
+# ── TABLE 1 — value created over the do-nothing baseline (all three models) ────
+base1 <- res %>%
+  transmute(scenario, model,
+            pct = value_added / J_baseline * 100,   # % improvement over baseline
+            dp  = value_added) %>%                  # Δpairs over baseline (= value_added)
+  pivot_wider(names_from = model, values_from = c(pct, dp)) %>%
+  arrange(scenario)
+
+tbl1 <- data.frame(
+  Scenario    = unname(SCEN_LAB1[as.character(base1$scenario)]),
+  greedy_pct  = fmt_pct2(base1$pct_greedy),  greedy_dp  = fmt_pairs(base1$dp_greedy),
+  myopic_pct  = fmt_pct2(base1$pct_myopic),  myopic_dp  = fmt_pairs(base1$dp_myopic),
+  rolling_pct = fmt_pct2(base1$pct_rolling), rolling_dp = fmt_pairs(base1$dp_rolling),
+  check.names = FALSE, stringsAsFactors = FALSE
+)
+groups1 <- c("Greedy", "Greedy", "Myopic", "Myopic", "Rolling", "Rolling")
+subs1   <- c("% over baseline", DP, "% over baseline", DP, "% over baseline", DP)
+csv1    <- setNames(tbl1, c("Scenario", paste(groups1, subs1)))
+
+ft1 <- style_grouped_table(
+  tbl1, groups1, subs1,
+  caption = "Conservation value created over the do-nothing baseline, by scenario",
+  footer_text = paste0("% over baseline = value_added / J_baseline \u00d7 100 (improvement over the ",
+                       "do-nothing landscape).  ", DP, " = value_added (discounted duck-pairs gained vs. baseline)."))
+save_table(ft1, csv1, "table_over_baseline")
+
+# ── TABLE 2 — value-added gap vs. rolling foresight (greedy, myopic) ───────────
+gap2 <- gaps %>%
+  transmute(scenario, model, gva = gap_value_added_pct, dp = dpairs) %>%
+  pivot_wider(names_from = model, values_from = c(gva, dp)) %>%
+  arrange(scenario)
+
+tbl2 <- data.frame(
+  Scenario   = unname(SCEN_LAB1[as.character(gap2$scenario)]),
+  greedy_gap = fmt_pct(gap2$gva_greedy),  greedy_dp = fmt_pairs(gap2$dp_greedy),
+  myopic_gap = fmt_pct(gap2$gva_myopic),  myopic_dp = fmt_pairs(gap2$dp_myopic),
+  check.names = FALSE, stringsAsFactors = FALSE
+)
+groups2 <- c("Greedy", "Greedy", "Myopic", "Myopic")
+subs2   <- c("gap %", DP, "gap %", DP)
+csv2    <- setNames(tbl2, c("Scenario", paste(groups2, subs2)))
+
+ft2 <- style_grouped_table(
+  tbl2, groups2, subs2,
+  caption = "Value-added gap vs. rolling (deterministic foresight), by scenario",
+  footer_text = paste0("gap % = shortfall as % of rolling's value-added.  ", DP,
+                       " = rolling value-added \u2212 model value-added (discounted duck-pairs)."))
+save_table(ft2, csv2, "table_gap_vs_rolling")
 
 # ══════════════════════════════════════════════════════════════════════════════
 # FIG 1  —  value-added gaps, greedy vs. myopic
@@ -308,4 +374,4 @@ fig6 <- ggplot(dec, aes(year, ducks / 1e6, colour = scenario)) +
   theme(panel.grid.major.x = element_line(colour = "grey92"))
 save_fig(fig6, "fig6_decline", 9, 5.2)
 
-message("\nDone. Wrote table + 6 figures to '", OUT_DIR, "/'.")
+message("\nDone. Wrote 2 tables + 6 figures to '", OUT_DIR, "/'.")
