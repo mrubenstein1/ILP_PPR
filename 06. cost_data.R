@@ -1,9 +1,6 @@
 ### Cost Data (Script 06) ####
 #
-# Loads the PLACES FMV: vacant raster (Nolte 2020), computes the mean fair
-# market value per EAU via zonal statistics, converts to total acquisition
-# cost, and projects forward to each decadal decision year using a fixed
-# annual inflation rate.
+# Loads the PLACES FMV: vacant raster (Nolte 2020)
 #
 # Operationalization:
 #   cost[i, t] = mean_fmv_per_ha[i] × area_ha × (1 + r)^(t − base_year)
@@ -25,22 +22,13 @@
 #
 #   File: places_fmv_vacant.tif
 #   Values: natural log of USD per hectare (2017 USD), from 2010 market conditions.
-#   We use the vacant-land variant (trained on sales without structures), which is
+#   use the vacant-land variant (trained on sales without structures), which is
 #   the appropriate specification for conservation land acquisition cost estimation.
 #   Pre-download to input_data/ before running this script.
-#
-# Precedent for this data source in the PPR:
-#   Kemink et al. (2023). Assessing prioritization measures for a private land
-#   conservation program in the U.S. Prairie Pothole Region. CSP, 5(7), e12939.
+
 #
 # Edge EAU design note:
-#   Script 01 assigns EAUs to WMDs using center-point containment (touches = FALSE):
-#   an EAU belongs to a WMD if its center falls inside that WMD boundary, but its
-#   rectangular footprint may partially extend outside. This creates a potential
-#   cost-benefit asymmetry — benefit data are only available within WMD boundaries,
-#   while a naïve cost calculation would price the full rectangular footprint
-#   (including any area outside the WMD with no corresponding benefit data).
-#   To avoid this asymmetry, cost is computed here only over PLACES pixels that fall
+#   cost is computed here only over PLACES pixels that fall
 #   within WMD boundaries (mask_to_wmd = TRUE). Edge EAUs are thereby costed only
 #   on the portion of their footprint for which benefit data also exist. The
 #   pixel-count diagnostic in Step 7 records how many pixels contribute to each
