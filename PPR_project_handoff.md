@@ -4,10 +4,14 @@
 the research question, data, modeling approach, current state, the decisions that are
 already settled (so they are not reopened), and the known limitations.*
 
-**Last updated 2026-06-25**, after the first complete R/Gurobi run on real data. The
-solver-runtime investigation that dominated the prior session is now **resolved**; the
-headline comparison has been produced. See §4 for the current state and §8 for the
-resolution record. Sections §1–§3 (question, data, locked design) are unchanged.
+**Last updated 2026-06-25**, after (a) the first complete R/Gurobi run on real data and
+(b) a follow-on **budget-deployment ("spend-down") session**. The solver-runtime
+investigation is **resolved** (§8); the headline comparison has been produced and now
+holds under a *realistic full-budget-deployment* rule (§9). See §4 for the current state,
+§8 for the runtime resolution record, and **§9 for the spend-down decision record and its
+central finding — that the foresight gap is a *targeting* effect, not a *deployment*
+one.** Sections §1–§3 (question, data, locked design) are unchanged except for the new
+§3.8 (spend-down).
 
 ---
 
@@ -30,15 +34,29 @@ A few decisions are **locked and should not be reopened without explicit instruc
 3. Conversion risk is treated as **modular and provisional** — it enters the models
    through exactly one data column (`trans_prob`) and may be replaced by a new dataset
    or metric later. Model code must not bake in conversion assumptions elsewhere.
+4. Each policy **deploys its full per-period budget** (the realistic "spend-down" rule,
+   §3.8, `SPEND_DOWN_MODE = "spend"` in `07`, default on). This was added after the first
+   run; it does **not** change the headline (§9), and it replaces a MIPGap-sensitive
+   under-spend artifact with an explicit behavioural rule. Set `SPEND_DOWN_MODE = "off"`
+   to reproduce the pre-spend-down numbers.
 
-**Headline finding (new this session).** Foresight matters, and substantially. Across the
-four climate scenarios the foresighted (rolling) policy beats the myopic policy by
-**~13–15% of value_added** and the greedy status-quo heuristic by **~43–46%**. This
-*overturns* the earlier expectation (former §4.3) that the models would be "nearly
-indistinguishable." The separation is masked on total landscape J (where the gap is
-~0.09%, because only ~60 of 841 parcels are ever acquired) and is visible on
-**value_added = J − J_baseline**, the welfare acquisition actually creates. Read §4.3 for
-the numbers and the mechanism.
+**Headline finding.** Foresight matters, and substantially. Across the four climate
+scenarios the foresighted (rolling) policy beats the myopic policy by **~13–15% of
+value_added** and the greedy status-quo heuristic by **~43–46%**. This *overturns* the
+earlier expectation (former §4.3) that the models would be "nearly indistinguishable." The
+separation is masked on total landscape J (where the gap is ~0.09%, because only ~60 of
+841 parcels are ever acquired) and is visible on **value_added = J − J_baseline**, the
+welfare acquisition actually creates. Read §4.3 for the numbers and §9 for the mechanism.
+
+**Mechanism finding (spend-down session).** Forcing myopic to deploy its entire budget
+(it previously left ~22% idle) lifts its acquisitions to ~full-budget levels but leaves
+the gap essentially unchanged (it even widens slightly in 3 of 4 climate scenarios). So
+**the cost of myopia is mis-*targeting*, not under-*deployment*.** Under-spending in the
+first run was a *symptom* of the blind belief, not its cause; a manager that cannot see
+which currently-safe parcels will become at-risk gains nothing from spending more, because
+it spends the freed budget blindly. This is a *stronger* result than the original framing
+and answers the obvious reviewer objection ("isn't the gap just an unspent-budget
+artifact?"). See §9.
 
 ---
 
@@ -260,24 +278,84 @@ drawbacks, and a broader finding: in this system the dominant axis of non-statio
 per se. This is now a candidate explanation for *why* the models separate as much as they
 do despite low per-period conversion (§4.3, §6 item 5).
 
+> **Risk gates the redistribution signal (clarified, spend-down session).** Acquisition
+> value is `V = Σ δ^t · b · (1 − S)`: you can only "save" a parcel to the extent it is
+> *both* abundant *and* at conversion risk. A parcel gaining abundance via redistribution
+> but facing no conversion risk has `(1 − S) ≈ 0` and contributes ~nothing to acquisition
+> value. So even though redistribution is the larger *physical* non-stationarity signal,
+> the *decision-relevant* signal is **risk** (where loss falls, on parcels that would have
+> been valuable). The §6-item-5 freeze-b-only vs freeze-λ-only decomposition quantifies
+> this split; the structural prediction is that λ gates it.
+
+### 3.8 Budget deployment — "spend-down" (decided, default on)
+Each ILP solve optimises acquisition value `V` as the **primary** objective exactly as in
+§3.2, then — among value-co-optimal plans — runs a **strictly lower-priority secondary**
+objective that deploys the *implemented* period's budget as fully as possible. This is the
+realistic rule (PPR managers cannot roll budget over, so they do not leave money idle) and
+it removes a MIPGap-sensitive artifact: under value-only solving, myopic left ~22% of its
+budget unspent because, under its frozen belief, the marginal parcels looked near-valueless
+and the solver was indifferent to them.
+
+- **Implementation (`07`):** Gurobi native multi-objective (`model$multiobj`), priority-2 =
+  value (`V`) with `SPEND_DOWN_RELTOL = 1e-4` allowed degradation, priority-1 = the
+  secondary. `SPEND_DOWN_MODE ∈ {"off","spend","count"}` (default `"spend"`): `"spend"`
+  maximises dollars deployed; `"count"` maximises parcels acquired ("more lottery tickets").
+  The secondary targets only `implement_periods` (the single enacted period in the
+  rolling/myopic loop) — deliberately, so it deploys the budget actually about to be spent
+  and avoids a perverse "defer to a pricier later period" tie under cost inflation.
+- **Scope:** affects only the ILP policies — materially for myopic, negligibly for rolling
+  (which already nearly exhausts the budget). **Greedy is untouched** (it deploys its budget
+  by construction, buying down its ranked list until nothing affordable remains).
+- **Important subtlety (do not over-trust monotonicity).** Forcing deployment was expected
+  to *weakly raise* myopic's true J (pure addition of non-negative-value parcels) and thus
+  only narrow the gap. In practice **it slightly *widens* the gap in 3 of 4 climate
+  scenarios.** The reason: `SPEND_DOWN_RELTOL` bounds degradation of the *frozen* objective
+  (the belief), not the *true* value used to score the result, and frozen and true value
+  diverge precisely on the currently-safe / future-at-risk parcels. Within the frozen-tie
+  band the cost-driven tiebreak can swap a truly-valuable parcel for a truly-marginal one
+  with no measurable change in the frozen objective. (Part of the wobble is also
+  multi-threaded run-to-run non-determinism, ~0.3% scale.) If a strictly monotone "never
+  hurts" variant is ever needed, use **fix-and-fill** (hard-fix the value-optimal core as
+  `y = 1`, then maximise spend over the remaining budget); it would hold the gap flat but
+  still would not *close* it (§9).
+
 ---
 
 ## 4. Current State
 
 ### 4.1 Modeling scripts (written and RUN on real data with Gurobi)
-Three R scripts continue the pipeline numbering:
-- **`07__ilp_core.R`** — shared engine: parameter block (δ, budget, scenario coding, and
-  a **Solver control** block — see §8.2), `build_scenario_matrices` (with the stationary
-  anchor correction, §8.3), `compute_survival_matrix`, `compute_value_vector`,
-  `make_budget`, `solve_acquisition_ilp` (Gurobi wrapper: cost-scaling, a per-solve time
-  cap, and an optional solve-log hook), the three policies + `run_full_horizon`,
-  `evaluate_policy`, and synthetic-instance + brute-force helpers for validation.
+Three R scripts continue the pipeline numbering, plus two reporting/extraction scripts:
+- **`07__ilp_core.R`** — shared engine: parameter block (δ, budget, scenario coding, a
+  **Solver control** block — see §8.2 — and the **spend-down** block, §3.8),
+  `build_scenario_matrices` (with the stationary anchor correction, §8.3),
+  `compute_survival_matrix`, `compute_value_vector`, `make_budget`, `solve_acquisition_ilp`
+  (Gurobi wrapper: cost-scaling, a per-solve time cap, the optional value-first/spend-second
+  multi-objective tiebreak, and an optional solve-log hook), the three policies +
+  `run_full_horizon` (all now forward `spend_down`/`implement_periods`), `evaluate_policy`,
+  and synthetic-instance + brute-force helpers for validation.
 - **`08__run_models.R`** — driver: runs all three models on all five scenarios, scores
   each against its scenario's true future, computes `J_baseline`, and writes results +
-  per-period trajectories + a per-run solver-convergence summary (RDS + CSV). Has a
-  `REPRODUCIBLE` toggle (single-thread, fixed seed) for bit-reproducible reported numbers.
+  per-period trajectories + a per-run solver-convergence summary (RDS + CSV). Records
+  `spend_down_mode` in the saved params and prints it at run start. Has a `REPRODUCIBLE`
+  toggle (single-thread, fixed seed) for bit-reproducible reported numbers. **Known gap:**
+  it does **not** persist the per-parcel acquisition schedules (only the summary rows and
+  trajectories), so maps require re-deriving them — see `10_extract_schedules.R` below; a
+  worthwhile future patch is to add `schedules` to the saved `.rds`.
 - **`09__validation.R`** — correctness suite (run first, §4.2), plus a documented stub for
-  the deferred MDP comparison.
+  the deferred MDP comparison. Formulation-certifying tests (P1/P2/P5) run with
+  `spend_down = "off"` (they concern the primary objective, which the tiebreak never
+  changes); P4 runs in the active mode (production ordering).
+- **`10_figures.R`** (reporting) — reproducible `ggplot2` + `flextable` script that reads
+  `model_results.csv` and `model_trajectories.csv` and writes the results table and six
+  figures (value-added gaps; absolute Δpairs; wet/dry stakes-vs-premium; J-vs-value_added;
+  cumulative gap over time; landscape decline) to `output_figs/`. Self-contained from the
+  CSVs; restyleable config block on top.
+- **`10_extract_schedules.R`** (extraction) — re-runs the three policies (single-thread,
+  seeded) and writes `output_data/acquisition_schedule_spatial.csv` (per scenario × model ×
+  EAU: acquired period/year, joined to the EAU centroid coords in
+  `input_data/eau_wmd_lookup.csv`) for mapping. Needed only because `08` discards schedules.
+  *Naming note:* the archived diagnostics (formerly `10`–`14`, §6) are separate and live in
+  `archive/`; consider renumbering these reporting scripts if the collision is confusing.
 
 ### 4.2 Validation status (real data, Gurobi, capped solver)
 The suite is run with the production time cap active, so its tolerances are now coherent
@@ -296,7 +374,9 @@ with how the policy is actually solved (see §8.2). The five properties:
   abundance trajectory is not flat — an upstream (01–04) data-construction matter, not a
   solver one (§6 item 6).
 - **P4** rolling ≥ myopic on every scenario, checked up to solver tolerance (a margin of
-  ~2% of value_added — above capped-solver noise, below any genuine order violation).
+  ~2% of value_added — above capped-solver noise, below any genuine order violation). Run
+  in the active `SPEND_DOWN_MODE` (production ordering); spend-down lifts myopic toward but
+  never past the foresight optimum, so the ordering holds with margin.
 - **P5** LP relaxation ≥ ILP (holds for free under the cap: the LP bound dominates any
   feasible incumbent).
 
@@ -305,14 +385,25 @@ which is why Gurobi is required at N = 841.
 
 ### 4.3 Key empirical finding (the headline)
 Under landscape-total with the current data, **foresight provides a large, consistent
-advantage on value_added** across all four climate scenarios:
+advantage on value_added** across all four climate scenarios. Numbers below are the
+**production (spend-down on)** run:
 
 | metric (climate scenarios) | greedy | myopic | rolling |
 |---|---|---|---|
 | value_added gap vs rolling | ~43–46% | **~13–15%** | 0 (reference) |
-| gap on total landscape J    | ~0.3%  | ~0.09% | 0 |
-| parcels acquired (of 841)   | ~60–64 | ~55–57 | ~65–67 |
-| total spend                 | ~13.0B | ~10.5B | ~13.4B |
+| gap on total landscape J    | ~0.24–0.31% | ~0.08–0.10% | 0 |
+| parcels acquired (of 841)   | ~60–64 | ~61–65 | ~65–67 |
+| total spend                 | ~13.0B | ~13.3–13.4B | ~13.4B |
+
+Per-scenario value_added gaps (spend-down run): myopic 13.8 / 13.4 / 14.9 / 15.3 %, greedy
+45.1 / 45.1 / 45.5 / 43.4 % for (45wet, 45dry, 85wet, 85dry). Stationary value_added ≈ 9
+duck-pairs out of 37.8M (a true null; its %-gaps are noise on a near-zero base).
+
+> **Spend-down vs value-only.** Pre-spend-down, myopic acquired ~55–57 parcels and spent
+> ~10.5B (≈78% of budget); spend-down lifts it to ~61–65 / ~13.3–13.4B (≈full budget) but
+> the **gap is unchanged** (§9). The headline ~13–15% holds either way; the production run
+> uses spend-down because it is the realistic rule and forecloses the "unspent-budget
+> artifact" objection.
 
 Two things to internalize:
 
@@ -320,13 +411,14 @@ Two things to internalize:
    `J_baseline` dominates `J`, so the gap on total J is ~0.09% and looks negligible. The
    decision-relevant quantity is `value_added = J − J_baseline` (the welfare acquisition
    creates), where the ordering is large and clear. The driver reports both.
-2. **The mechanism is the cost of delayed *and* under-deployed protection.** A myopic
-   manager re-plans each decade and self-corrects, but it protects later than the
-   foresighted manager and — notably — **systematically under-acquires and under-spends**
-   (~55 parcels / ~10.5B vs rolling's ~65 / ~13.4B). Under its frozen belief it does not
-   "see" enough value to deploy the full budget on parcels whose worth depends on a future
-   it cannot anticipate. Greedy diverges more still, because its benefit-cost criterion
-   differs from the welfare objective.
+2. **The mechanism is mis-*targeting*, not under-*deployment*.** A myopic manager re-plans
+   each decade and self-corrects, but it cannot identify the parcels that look safe under
+   today's hazard yet will become valuable losses later — so it protects the wrong set.
+   Forcing it to deploy its full budget (spend-down, §3.8/§9) does **not** recover the gap:
+   it spends the freed budget blindly, and the gap is unchanged-to-slightly-wider. The
+   original under-spend was a *symptom* of the blind belief, not the cause. Greedy diverges
+   more still, because its benefit-cost criterion differs from the welfare objective
+   entirely (and it spends the full budget too — same lesson, larger).
 
 **This supersedes the prior "nearly indistinguishable" expectation.** That impression came
 from looking at total-J gaps and at near-null diagnostics; on the climate scenarios with
@@ -356,14 +448,26 @@ P3a/P3b and the stationary row of `08`'s output.
 - **No spatial interactions.** Each EAU is independent — no adjacency, connectivity, or
   contiguity constraints, and no spatial spillover in benefit.
 - **Acquisition is permanent and one-shot.** Acquire-once, no divestment; per-period
-  budget with no rollover.
+  budget with no rollover (the no-rollover assumption is what motivates the spend-down
+  rule, §3.8).
 - **Greedy uses benefit-cost ratio, not the welfare objective** — an intentional
   status-quo baseline, not a "welfare-optimal under wrong beliefs" model the way myopic is.
+- **Budget-deployment rule is a modelling choice (spend-down, §3.8).** Production uses
+  `SPEND_DOWN_MODE = "spend"`. It changes *which/how many* parcels myopic buys but **not the
+  headline gap** (§9). Two caveats for a future agent: (i) the "forced deployment can only
+  help" intuition is *false* here — the `1e-4` reltol bounds the belief's objective, not
+  true value, so the gap can drift slightly the wrong way; (ii) `"spend"` vs `"count"` give
+  different schedules and a fix-and-fill variant would behave differently again — none close
+  the gap, but the maps and any per-parcel claims depend on the choice, so state it.
+- **The cap's conservative direction holds only value-side, not deployment-side.** Under
+  value-only solving, truncation biased myopic *down* (conservative). Under spend-down that
+  one-directional guarantee is weaker (see above); rely on the *magnitude* of the effect
+  (~13–15% ≫ ~0.3% wobble), not on a strict monotonicity argument.
 - **Reported numbers carry a small solver-precision band.** Each solve is capped at 60 s
   (§8.2); on the climate scenarios this leaves <~0.5% of value_added of uncertainty on the
-  myopic numbers, far below the ~13% effect, and it biases myopic *down* (so the comparison
-  is conservative). For exact reproducibility, run `08` with `REPRODUCIBLE = TRUE`
-  (single-thread).
+  myopic numbers, far below the ~13% effect. Multi-threaded runs are not bit-reproducible
+  (~0.3% wobble); for exact reproducibility run `08` (and `10_extract_schedules.R`) with
+  single-thread + fixed seed.
 - **Exact MDP benchmark is intractable.** A joint-landscape MDP has ~3^841 states (§ stub
   in `09`).
 - **Stationary abundance flatness is asserted, not yet confirmed on this machine.** The
@@ -377,33 +481,53 @@ P3a/P3b and the stationary row of `08`'s output.
 1. **Confirm the run.** `09__validation.R` (Gurobi) → P1–P5, with attention to P3a
    (stationary benefit flatness) → `08__run_models.R` → inspect `model_results.csv`, the
    trajectories, and `solver_convergence.csv`.
-2. **Lock reportable numbers.** Run `08` with `REPRODUCIBLE = TRUE` for the figures that
-   go in the thesis; report value_added gaps to ~2 significant figures (≈13% myopic,
-   ≈45% greedy) with the solver band noted.
-3. **Sensitivity analyses.** δ (discounting), `BUDGET_EAUS_PER_PERIOD` (default 5, range
-   2–10), and ε (conversion floor). Parameter blocks are at the top of `07` and `05`.
-4. **Conversion data / metric.** Possibly adopt a redistribution-aware or higher-conversion
-   risk layer; absorbed through `trans_prob` alone.
-5. **Decompose the foresight signal (thesis enrichment).** Myopic freezes *both* benefit
-   and hazard. Re-run freezing only `b` vs only `λ` to attribute the ~13% to anticipating
-   abundance redistribution vs habitat loss. If redistribution dominates, that is a sharper
-   and more novel framing than "conversion risk."
-6. **Stationary abundance flatness (if P3a fails).** If the stationary benefit trajectory
+2. **Lock reportable numbers.** Run `08` (spend-down on) single-thread/seeded for the
+   figures that go in the thesis; report value_added gaps to ~2 significant figures (≈13–15%
+   myopic, ≈43–46% greedy) with the solver band noted.
+3. **Figures (done) and maps (pending).** `10_figures.R` produces the table + six figures
+   from the two CSVs. Maps are not yet made: run `10_extract_schedules.R` to write
+   `acquisition_schedule_spatial.csv`, then build acquisition-footprint maps (per model ×
+   scenario, shaded by acquisition decade), rolling-only vs myopic-only "what foresight
+   adds/avoids" difference maps, and a wet-vs-dry footprint comparison.
+4. **Decompose the foresight signal (thesis enrichment, HIGH VALUE).** Myopic freezes
+   *both* `b` and `λ`. Re-run with selective freezing — (frozen b, true λ) and (true b,
+   frozen λ) — to attribute the gap to anticipating *risk* vs *abundance redistribution*.
+   Structural prediction (§3.8 box): **λ gates it** — "sees risk, blind to abundance" should
+   recover most of rolling's value, "sees abundance, blind to risk" little, because
+   `V = b·(1−S)` pays only for prevented loss. This is the cleanest next analysis and pairs
+   naturally with the targeting-vs-deployment finding (§9). NB cost is *not* a channel:
+   myopic already uses the true cost trajectory, so cost foresight contributes nothing to
+   the rolling-vs-myopic gap.
+5. **Conversion-risk magnitude sensitivity (separate branch).** Planned: scale the hazard
+   up (the PPR's true gross conversion likely exceeds the FOREsce net-loss proxy). Do **not**
+   multiply `trans_prob` directly (it is a per-decade probability in [0,1]; ×10 overflows and
+   corrupts the survival recursion). Scale the *hazard rate*: `λ' = 1 − exp(−k·(−ln(1−λ)))`
+   (≈ k·λ for small λ, saturates gracefully). Watch the **Option A** assumption (§3.6): at
+   high λ, "unacquired ⇒ always available" may break and converted parcels may need removal
+   from the choice set. Expect larger gaps on *both* metrics and *faster* solves (higher,
+   more-differentiated λ un-flattens the degenerate objective).
+6. **Other sensitivity analyses.** δ (discounting), `BUDGET_EAUS_PER_PERIOD` (default 5,
+   range 2–10), ε (conversion floor), and `SPEND_DOWN_MODE` ("spend" vs "count").
+7. **Persist schedules in `08`.** Add the per-scenario/model acquisition vectors to the
+   saved `.rds` so maps don't require a re-run (`10_extract_schedules.R` is the interim fix).
+8. **Stationary abundance flatness (if P3a fails).** If the stationary benefit trajectory
    is not flat, decide upstream (01–04) whether the stationary scenario should hold 2020
    abundance constant; this is a data-construction decision, not a model change.
-7. **MDP comparison (deferred).** Interface stub documented in `09`.
+9. **MDP comparison (deferred).** Interface stub documented in `09`.
 
 ---
 
 ## 7. Thesis framing
 
-Communicate the result precisely: model choice matters in proportion to how much
-foresight changes the *timing and amount* of protection, and that effect is large here
-(~13% myopic, ~45% greedy on value_added) even though it is invisible on the landscape
-total. The value of foresight is the value of protecting at-risk, value-shifting parcels
-*earlier and in greater number* than a present-assuming manager will. The honest caveats
-are the provisional conversion metric and the small solver-precision band on the capped
-solves; neither threatens the finding.
+Communicate the result precisely: model choice matters in proportion to how well
+foresight identifies *which* parcels to protect, and that effect is large here (~13–15%
+myopic, ~43–46% greedy on value_added) even though it is invisible on the landscape total.
+The value of foresight is the value of protecting the parcels that look safe under today's
+conditions but will become valuable losses later — a **targeting** advantage. The
+spend-down result sharpens this: forcing the myopic manager to spend its whole budget does
+not recover the gap (§9), so the story is not "myopia under-invests" but "myopia invests in
+the wrong places." The honest caveats are the provisional conversion metric and the small
+solver-precision band on the capped solves; neither threatens the finding.
 
 ---
 
@@ -479,3 +603,70 @@ prior worry that loosening precision could "contaminate the muted effect" was al
 re-examined and found to conflate the solver's internal gap with the reported value_added;
 the cap controls wall-time, not gap, and the headline effect is an order of magnitude
 larger than the residual either way.
+
+---
+
+## 9. Spend-down Decision Record — Budget-Deployment Session (2026-06-25)
+
+*This section records the budget-deployment ("spend-down") work that followed the first
+full run. It is a design + finding record, parallel to §8. The central result revised the
+mechanism narrative in §0/§4.3/§7.*
+
+### 9.1 Motivation
+In the first (value-only) run, myopic spent ~78% of its budget and acquired ~55–57 of the
+parcels rolling did (~65–67). Two reasons to force full deployment: (i) **realism** — PPR
+managers cannot roll budget over, so leaving ~22% idle is not a real behaviour; (ii)
+**rigour** — the under-spend was partly a *MIPGap artifact* (the marginal parcels had
+frozen value below the solver's stopping threshold, so the solver was indifferent and left
+them unbought), which a reviewer could dismiss as a tolerance choice. Spend-down replaces
+that artifact with an explicit, defensible rule.
+
+### 9.2 What was implemented (`07`/`08`/`09`)
+See §3.8 for the mechanism. In short: a Gurobi lexicographic multi-objective — value first,
+then (among value-co-optimal plans) maximise deployment of the *implemented* period's
+budget — exposed as `SPEND_DOWN_MODE ∈ {"off","spend","count"}` (default `"spend"`) with
+`SPEND_DOWN_RELTOL = 1e-4`. `08` records the mode; `09` runs formulation tests (P1/P2/P5)
+with `"off"` and the ordering test (P4) in the active mode. Greedy is unaffected.
+
+### 9.3 The central finding — targeting, not deployment
+With spend-down on, myopic deploys ≈full budget (~13.3–13.4B, ~61–65 parcels), but **the
+value_added gap is unchanged** — ~13–15%, and it *widens slightly* in 3 of 4 climate
+scenarios (myopic value_added moved −1.7% to +0.1%; rolling ≈ unchanged):
+
+| scenario | myopic gap, value-only → spend-down | myopic spend → |
+|---|---|---|
+| RCP4.5 wet | 13.1% → 13.8% | 10.5B → 13.4B |
+| RCP4.5 dry | 13.5% → 13.4% | 10.5B → 13.3B |
+| RCP8.5 wet | 13.5% → 14.9% | 10.5B → 13.4B |
+| RCP8.5 dry | 15.1% → 15.3% | 10.5B → 13.4B |
+
+**Interpretation.** The cost of myopia is **mis-targeting**, not under-deployment. Myopic
+has no signal for which currently-safe parcels will become valuable losses, so spending the
+freed budget buys a roughly value-neutral basket and recovers ~none of the gap. Under-spend
+was a *symptom* of the blind belief, not its cause. This is a *stronger* and more defensible
+result than the original "under-acquires/under-spends" framing, and it forecloses the
+"unspent-budget artifact" objection.
+
+### 9.4 Why it can *worsen* slightly — a correction to record
+An earlier verbal claim that forced deployment "can only weakly raise myopic's true J / only
+narrow the gap" was **too strong**. `SPEND_DOWN_RELTOL` bounds degradation of the *frozen*
+(belief) objective, not the *true* value used to score the result; frozen and true value
+diverge exactly on the contested currently-safe parcels, so within the frozen-tie band the
+cost-driven tiebreak can swap a truly-valuable parcel for a truly-marginal one at no
+measurable frozen-objective cost. Hence true J (and the gap) can drift slightly the wrong
+way. The clean "never hurts" variant is **fix-and-fill** (hard-fix the value-optimal core,
+then fill remaining budget with positive-value parcels); it would hold the gap flat, but it
+still would **not close** it — so the substantive conclusion is unchanged, and fix-and-fill
+is optional polish, not a correction needed for the result.
+
+### 9.5 Tooling produced
+- `10_figures.R` — `ggplot2`/`flextable`, table + six figures from the two CSVs → `output_figs/`.
+- `10_extract_schedules.R` — re-derives and exports the per-parcel acquisition schedule
+  (with EAU coordinates) for mapping, since `08` does not persist schedules (§4.1, §6 item 7).
+
+### 9.6 Decision
+**Adopt spend-down (`"spend"`) as the production rule.** It is realistic, it leaves the
+headline intact, and it strengthens the framing. Keep `"off"` available to reproduce the
+first-run numbers. Consider running the §6-item-4 freeze decomposition next — it is the
+natural complement to this finding (deployment ruled out ⇒ isolate which *information*,
+risk vs abundance, drives the targeting advantage).

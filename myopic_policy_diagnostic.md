@@ -12,6 +12,13 @@ open-fork format) is preserved in `archive/` for the full blow-by-blow.*
 null) is fixed by the 2020-hazard anchor correction in `build_scenario_matrices`. See the
 handoff §8 for the decision record and `archive/PROVENANCE.md` for the evidence map.
 
+> **Follow-on (spend-down session, same day).** A separate budget-deployment study added a
+> full-budget-deployment ("spend-down") rule and revised the *mechanism* narrative: the
+> under-spend reported in §5 below was a **symptom**, not the cause. Forcing myopic to
+> deploy its whole budget leaves the gap unchanged, so the foresight advantage is a
+> *targeting* effect, not a *deployment* one. The production headline is now taken from the
+> spend-down run. This runtime document is otherwise unaffected. See **handoff §9**.
+
 Evidence tags used below: `[MEASURED]` (a diagnostic run, numbers cited), `[FROM LOG]`
 (real Gurobi console output), `[FROM SOURCE]` (a property of scripts 05/07), `[RESOLVED]`
 (a former hypothesis now settled by measurement).
@@ -163,6 +170,13 @@ also systematically under-acquiring (~55 vs ~65 parcels) and under-spending (~10
 of reading total J (~0.09% gap) and the near-zero stationary null; on value_added the
 separation is large and well clear of the solver-precision floor.
 
+> **Refinement (spend-down session).** The "under-acquiring / under-spending" clause above
+> describes the *value-only* run and was later shown to be a **symptom**, not a cause.
+> Requiring full budget deployment lifts myopic to ~61–65 parcels / ~13.3–13.4B but leaves
+> the ~13–15% gap unchanged (it even widens slightly in 3 of 4 scenarios). The cost of
+> myopia is **mis-targeting**, not under-deployment. Production numbers now come from the
+> spend-down run; see handoff §9.
+
 ---
 
 ## 6. One-line summary
@@ -175,3 +189,23 @@ slow scenario was the stationary null, whose anchor is now corrected and whose v
 test is now solver-independent. The "exact-ties vs near-flatness" fork that organized the
 original investigation was rendered moot by the pick-stability and climate-vs-stationary
 measurements.
+
+##7. Summaries
+
+For an ecological audience
+[to review]
+Our myopic strategy re-solves a parcel-selection problem each decade, choosing the set of 
+acquisitions that protects the most waterfowl value for the available budget. These solves 
+were slow, but not because the model struggled to find good selections — it found an excellent 
+one within seconds. The slowness came afterward: because many different combinations of 
+parcels protect almost exactly the same total value, the solver spent additional minutes 
+confirming that no alternative combination was even marginally better. This confirmation 
+step rarely changed the selection. We therefore cap each solve at 60 seconds. By that point 
+the model has identified a selection within a small fraction of one percent of the best possible, and further computation would only re-verify it. This has no bearing on the simulated manager's behaviour, who re-decides every decade and acts only on the current decade's choices. We confirmed that capping shifts the results by far less than the differences between the strategies we compare, so our conclusions are unaffected.
+ 
+For a quantitative reviewer
+The myopic policy solves a frozen-belief acquisition ILP per period (benefit and hazard held flat across the remaining horizon). The bottleneck was optimality certification, not incumbent quality: the solver reached a near-optimal incumbent within seconds, then expended the remaining time closing the gap to the LP-relaxation bound. The frozen belief flattens inter-parcel variation in the per-period value coefficients, yielding a large set of near-co-valued schedules that branch-and-bound must exhaustively exclude to prove optimality — costly even though the incumbent has stopped improving. We impose a 60s per-solve limit. Empirically, only one or two of the nine per-period solves per climate scenario reach it, each at an optimality gap ≤0.05%; the rest certify unaided, and all rolling-horizon solves close optimally. This residual (~0.04% on the frozen objective; <0.5% on realized value_added) is far below the ~13% rolling-vs-myopic value_added effect. Two points secure the choice: the policy implements only the current-period decision and re-optimizes, so certifying the discarded tail is irrelevant to the enacted trajectory; and truncation biases the myopic incumbent slightly downward, so it can only widen, never manufacture, the rolling advantage — the comparison is conservative under the cap.
+
+
+
+

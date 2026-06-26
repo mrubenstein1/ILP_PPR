@@ -36,8 +36,13 @@ Foresight matters, and substantially. Across the four climate scenarios, the rol
 policy beats myopic by **~13–15%** and greedy by **~43–46%** on **value_added** (the
 conservation value acquisition actually creates, `J − J_baseline`). The gap is invisible
 on the total landscape objective `J` (~0.09%, because only ~60 of 841 parcels are ever
-acquired) and must be read on value_added — the driver reports both. Myopic also
-systematically under-acquires and under-spends its budget relative to rolling.
+acquired) and must be read on value_added — the driver reports both.
+
+The cost of myopia is **mis-targeting, not under-deployment.** Each policy is required to
+deploy its full per-period budget (the realistic "spend-down" rule). When myopic is forced
+to spend its whole budget rather than leaving ~22% idle, it buys more parcels but the gap is
+**unchanged** — it cannot tell which currently-safe parcels will become valuable losses, so
+the extra spending is blind. Foresight's value is knowing *which* parcels to protect.
 
 **For the full rationale, locked design decisions, and limitations, read
 `PPR_project_handoff.md`.** For the solver-runtime investigation and its resolution, read
@@ -52,8 +57,13 @@ other open solvers do not scale to N = 841.
    `input_data/data_panel.rds`.
 2. `09__validation.R` — run first, with Gurobi active, to certify the formulation (P1–P5).
 3. `08__run_models.R` — runs all three models on all five scenarios and writes results to
-   `output_data/`. Set `REPRODUCIBLE <- TRUE` (top of the script) for bit-reproducible
-   reported numbers.
+   `output_data/`. Run single-thread + seeded for bit-reproducible reported numbers. Budget
+   deployment is controlled by `SPEND_DOWN_MODE` near the top of `07` (default `"spend"`,
+   the production rule; `"off"` reproduces the pre-spend-down numbers).
+4. `10_figures.R` — builds the results table and six figures (`ggplot2`/`flextable`) from
+   the two output CSVs into `output_figs/`. Reproducible from the CSVs alone.
+5. `10_extract_schedules.R` — (for maps) re-runs the policies and exports the per-parcel
+   acquisition schedule with EAU coordinates; needed because `08` does not persist schedules.
 
 Outputs: `output_data/model_results.{rds,csv}`, `model_trajectories.csv`, and
 `solver_convergence.csv` (a per-run record of how often the per-solve time cap bound).
@@ -78,16 +88,27 @@ Outputs: `output_data/model_results.{rds,csv}`, `model_trajectories.csv`, and
 
 7. **`07__ilp_core`** — shared engine sourced by `08` and `09`: scenario-matrix assembly,
    survival/value/budget functions, the Gurobi solver wrapper, the three policies, and
-   evaluation. Solver settings (a 60 s per-solve time cap, threads, seed, output) live in a
-   **Solver control** parameter block near the top.
+   evaluation. Solver settings (a 60 s per-solve time cap, threads, seed, output) and the
+   **spend-down** block (`SPEND_DOWN_MODE`, the value-first/full-budget-deployment tiebreak)
+   live in parameter blocks near the top.
 8. **`08__run_models`** — driver: runs the three models on all scenarios, scores each
    against its true future, and writes results, trajectories, and a convergence summary.
+   (Does not persist per-parcel schedules — see `10_extract_schedules` for maps.)
 9. **`09__validation`** — correctness suite (P1–P5) plus a documented stub for the deferred
-   MDP comparison.
+   MDP comparison. Formulation tests run with spend-down off; the ordering test runs in the
+   active mode.
 
-**Diagnostics (`10`–`14`) — archived.** These resolved the myopic-policy runtime question;
-they are not part of the active pipeline. They (and their outputs) live in `archive/` with
-a `PROVENANCE.md` mapping each to the production decision it justifies.
+**Reporting / mapping:**
+
+10. **`10_figures`** — reproducible `ggplot2`/`flextable` script that builds the results
+    table and six figures from the output CSVs into `output_figs/`.
+11. **`10_extract_schedules`** — re-derives and exports the per-parcel acquisition schedule
+    (with EAU coordinates) for mapping. *(Shares the `10` prefix with the archived
+    diagnostics below — separate things; rename if confusing.)*
+
+**Diagnostics (formerly `10`–`14`) — archived.** These resolved the myopic-policy runtime
+question; they are not part of the active pipeline. They (and their outputs) live in
+`archive/` with a `PROVENANCE.md` mapping each to the production decision it justifies.
 
 ## References and sources
 

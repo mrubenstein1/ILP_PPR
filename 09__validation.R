@@ -49,7 +49,7 @@
 # instance; P2/P3/P5 then exercise the same solver on the real data.
 # ══════════════════════════════════════════════════════════════════════════════
 
-source("07__ilp_core_spenddown.R")
+source("07__ilp_core.R")
 
 TOL    <- 1e-6     # exact-arithmetic tolerance (P1, and the solver-independent P3 checks)
 VA_TOL <- 0.02    # solver-tolerance checks (P2, P4): fraction of value_added that a
