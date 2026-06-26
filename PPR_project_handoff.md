@@ -4,8 +4,11 @@
 the research question, data, modeling approach, current state, the decisions that are
 already settled (so they are not reopened), and the known limitations.*
 
-**Last updated 2026-06-25**, after (a) the first complete R/Gurobi run on real data and
-(b) a follow-on **budget-deployment ("spend-down") session**. The solver-runtime
+**Last updated 2026-06-26** (P3a closed — the stationary null is now fully certified, §4.4;
+**`08` now persists the per-parcel schedule and reporting is consolidated into a single
+`10_results_figs.R` that produces tables + figures + maps**, §4.1/§6 items 3 & 7), after (a)
+the first complete R/Gurobi run on
+real data and (b) a follow-on **budget-deployment ("spend-down") session**. The solver-runtime
 investigation is **resolved** (§8); the headline comparison has been produced and now
 holds under a *realistic full-budget-deployment* rule (§9). See §4 for the current state,
 §8 for the runtime resolution record, and **§9 for the spend-down decision record and its
@@ -337,25 +340,31 @@ Three R scripts continue the pipeline numbering, plus two reporting/extraction s
   each against its scenario's true future, computes `J_baseline`, and writes results +
   per-period trajectories + a per-run solver-convergence summary (RDS + CSV). Records
   `spend_down_mode` in the saved params and prints it at run start. Has a `REPRODUCIBLE`
-  toggle (single-thread, fixed seed) for bit-reproducible reported numbers. **Known gap:**
-  it does **not** persist the per-parcel acquisition schedules (only the summary rows and
-  trajectories), so maps require re-deriving them — see `10_extract_schedules.R` below; a
-  worthwhile future patch is to add `schedules` to the saved `.rds`.
+  toggle (single-thread, fixed seed) for bit-reproducible reported numbers. **Now also
+  persists the per-parcel acquisition schedule (2026-06-26):** it joins each policy's
+  `acquired` vector to EAU coordinates (from `input_data/eau_wmd_lookup.rds`) and writes
+  `output_data/acquisition_schedule_spatial.csv`, also embedding `schedule` in the saved
+  `.rds`. This resolved the former "08 discards schedules" gap (§6 item 7) and retired the
+  separate extract step. The persisted schedule reflects the run's mode, so run with
+  `REPRODUCIBLE <- TRUE` for a stable map footprint.
 - **`09__validation.R`** — correctness suite (run first, §4.2), plus a documented stub for
   the deferred MDP comparison. Formulation-certifying tests (P1/P2/P5) run with
   `spend_down = "off"` (they concern the primary objective, which the tiebreak never
   changes); P4 runs in the active mode (production ordering).
-- **`10_figures.R`** (reporting) — reproducible `ggplot2` + `flextable` script that reads
-  `model_results.csv` and `model_trajectories.csv` and writes the results table and six
-  figures (value-added gaps; absolute Δpairs; wet/dry stakes-vs-premium; J-vs-value_added;
-  cumulative gap over time; landscape decline) to `output_figs/`. Self-contained from the
-  CSVs; restyleable config block on top.
-- **`10_extract_schedules.R`** (extraction) — re-runs the three policies (single-thread,
-  seeded) and writes `output_data/acquisition_schedule_spatial.csv` (per scenario × model ×
-  EAU: acquired period/year, joined to the EAU centroid coords in
-  `input_data/eau_wmd_lookup.csv`) for mapping. Needed only because `08` discards schedules.
-  *Naming note:* the archived diagnostics (formerly `10`–`14`, §6) are separate and live in
-  `archive/`; consider renumbering these reporting scripts if the collision is confusing.
+- **`10_results_figs.R`** (reporting — single consolidated script) — pure reader of `08`'s
+  outputs (no solver, no `07`). Reads `model_results.csv`, `model_trajectories.csv`, and
+  `acquisition_schedule_spatial.csv` and writes to `output_figs/`: two results tables + six
+  figures (`ggplot2`/`flextable`: value-added gaps; absolute Δpairs; wet/dry
+  stakes-vs-premium; J-vs-value_added; cumulative gap over time; landscape decline) **and**
+  three maps (footprint by decade; rolling-vs-myopic foresight difference; wet-vs-dry).
+  Restyleable config block on top; `DRAW_MAPS` toggles the map section. The maps need only
+  `ggplot2`; `terra`/`sf` are used solely for the optional WMD outline overlay (it dissolves
+  `input_data/wmd_raster_equal_area.tif` to district polygons) and are skipped gracefully if
+  absent — so tables + figures still build without the spatial stack.
+- **Retired (2026-06-26):** `10_extract_schedules.R` / `11_extract_schedules.R` (the schedule
+  now comes from `08`) and the standalone `11_maps.R` (folded into `10_results_figs.R`).
+  *Naming note:* the archived diagnostics (formerly `10`–`14`, §6) live in `archive/` and are
+  separate from this reporting script.
 
 ### 4.2 Validation status (real data, Gurobi, capped solver)
 The suite is run with the production time cap active, so its tolerances are now coherent
@@ -370,9 +379,11 @@ with how the policy is actually solved (see §8.2). The five properties:
   cannot satisfy even when correct): **(P3a)** the stationary benefit and (non-terminal)
   hazard trajectories are flat; **(P3b)** the myopic *frozen* value vector equals the
   rolling *true* value vector. The realized myopic-vs-rolling gap is reported for
-  information only. *Watch P3a's benefit check:* a FAIL there would mean the stationary
-  abundance trajectory is not flat — an upstream (01–04) data-construction matter, not a
-  solver one (§6 item 6).
+  information only. **P3a now passes on the production run (2026-06-26):** the stationary
+  benefit and non-terminal hazard trajectories are flat, so the null is exact and this loop
+  is closed. (Had P3a's benefit check failed, it would have meant the stationary abundance
+  trajectory is not flat — an upstream (01–04) data-construction matter, not a solver one;
+  see §6 item 8.)
 - **P4** rolling ≥ myopic on every scenario, checked up to solver tolerance (a margin of
   ~2% of value_added — above capped-solver noise, below any genuine order violation). Run
   in the active `SPEND_DOWN_MODE` (production ordering); spend-down lifts myopic toward but
@@ -431,8 +442,10 @@ decomposition for the thesis (§6 item 5).
 With the §8.3 anchor fix, the stationary scenario is a genuine null. Pre-fix it showed a
 spurious ~33% myopic value_added gap caused entirely by the non-ε 2020 baseline hazard;
 post-fix, value_added under stationarity is near zero (there is nothing to foresee) and
-myopic and rolling coincide up to solver tie-breaking. **Confirm this on your run** via
-P3a/P3b and the stationary row of `08`'s output.
+myopic and rolling coincide up to solver tie-breaking. **Confirmed on the production run
+(2026-06-26):** P3a and P3b both pass, and the stationary row of `08`'s output shows
+value_added ≈ 0 (≈9 duck-pairs out of 37.8M) with myopic ≈ rolling up to solver
+tie-breaking. The null is exact.
 
 ---
 
@@ -466,29 +479,37 @@ P3a/P3b and the stationary row of `08`'s output.
 - **Reported numbers carry a small solver-precision band.** Each solve is capped at 60 s
   (§8.2); on the climate scenarios this leaves <~0.5% of value_added of uncertainty on the
   myopic numbers, far below the ~13% effect. Multi-threaded runs are not bit-reproducible
-  (~0.3% wobble); for exact reproducibility run `08` (and `10_extract_schedules.R`) with
-  single-thread + fixed seed.
+  (~0.3% wobble); for exact reproducibility — and a stable map footprint, since the maps
+  now read the schedule `08` persists — run `08` with single-thread + fixed seed
+  (`REPRODUCIBLE <- TRUE`).
 - **Exact MDP benchmark is intractable.** A joint-landscape MDP has ~3^841 states (§ stub
   in `09`).
-- **Stationary abundance flatness is asserted, not yet confirmed on this machine.** The
-  anchor fix flattens the stationary *hazard*; P3a additionally checks that *benefit* is
-  flat. If it is not, the null is not exact and the cause is upstream (01–04).
+- **Stationary abundance flatness — confirmed (2026-06-26).** The anchor fix flattens the
+  stationary *hazard*; P3a additionally certifies that *benefit* is flat, and it now
+  **passes**, so the stationary null is exact. (Had it failed, the null would not have been
+  exact and the cause would have been upstream in 01–04.)
 
 ---
 
 ## 6. Open Items / Next Steps
 
-1. **Confirm the run.** `09__validation.R` (Gurobi) → P1–P5, with attention to P3a
-   (stationary benefit flatness) → `08__run_models.R` → inspect `model_results.csv`, the
-   trajectories, and `solver_convergence.csv`.
+1. **Confirm the run.** `09__validation.R` (Gurobi) → P1–P5. *(P3a, stationary benefit
+   flatness, now passes — §4.4; this item is satisfied on the production run.)* →
+   `08__run_models.R` → inspect `model_results.csv`, the trajectories, and
+   `solver_convergence.csv`.
 2. **Lock reportable numbers.** Run `08` (spend-down on) single-thread/seeded for the
    figures that go in the thesis; report value_added gaps to ~2 significant figures (≈13–15%
    myopic, ≈43–46% greedy) with the solver band noted.
-3. **Figures (done) and maps (pending).** `10_figures.R` produces the table + six figures
-   from the two CSVs. Maps are not yet made: run `10_extract_schedules.R` to write
-   `acquisition_schedule_spatial.csv`, then build acquisition-footprint maps (per model ×
-   scenario, shaded by acquisition decade), rolling-only vs myopic-only "what foresight
-   adds/avoids" difference maps, and a wet-vs-dry footprint comparison.
+3. **Figures + maps (done, 2026-06-26 — consolidated).** `08` now persists
+   `acquisition_schedule_spatial.csv` (per scenario × model × EAU: acquired period/year +
+   EAU coordinates, ESRI:102039 USGS Conus Albers, on a regular ~18.5 km lattice). The single
+   `10_results_figs.R` reads `08`'s three CSVs and produces the two tables, six figures, and
+   three maps: (a) acquisition-footprint per model × scenario, shaded by acquisition decade;
+   (b) rolling-vs-myopic "what foresight adds/avoids" difference (both-/rolling-only/
+   myopic-only/neither); (c) wet-vs-dry footprint comparison. WMD outlines are overlaid from
+   `input_data/wmd_raster_equal_area.tif` (dissolved to district polygons via `terra`/`sf`;
+   optional). *Remaining polish (optional):* a state basemap, and the final scenario subset
+   for the thesis plates.
 4. **Decompose the foresight signal (thesis enrichment, HIGH VALUE).** Myopic freezes
    *both* `b` and `λ`. Re-run with selective freezing — (frozen b, true λ) and (true b,
    frozen λ) — to attribute the gap to anticipating *risk* vs *abundance redistribution*.
@@ -508,11 +529,15 @@ P3a/P3b and the stationary row of `08`'s output.
    more-differentiated λ un-flattens the degenerate objective).
 6. **Other sensitivity analyses.** δ (discounting), `BUDGET_EAUS_PER_PERIOD` (default 5,
    range 2–10), ε (conversion floor), and `SPEND_DOWN_MODE` ("spend" vs "count").
-7. **Persist schedules in `08`.** Add the per-scenario/model acquisition vectors to the
-   saved `.rds` so maps don't require a re-run (`10_extract_schedules.R` is the interim fix).
-8. **Stationary abundance flatness (if P3a fails).** If the stationary benefit trajectory
-   is not flat, decide upstream (01–04) whether the stationary scenario should hold 2020
-   abundance constant; this is a data-construction decision, not a model change.
+7. **Persist schedules in `08` — DONE (2026-06-26).** `08` now joins each policy's
+   `acquired` vector to EAU coordinates and writes `acquisition_schedule_spatial.csv` (and
+   embeds `schedule` in `model_results.rds`), so maps read a saved artifact and never
+   re-solve. The interim extract script is retired.
+8. **Stationary abundance flatness — RESOLVED (2026-06-26).** P3a passes: the stationary
+   benefit trajectory is flat, so the null is exact and no upstream (01–04) change is needed.
+   (Kept for history: had P3a failed, the fix would have been an upstream decision about
+   whether the stationary scenario holds 2020 abundance constant — a data-construction
+   choice, not a model change.)
 9. **MDP comparison (deferred).** Interface stub documented in `09`.
 
 ---
@@ -587,7 +612,8 @@ stationary scenario only, set the 2020 hazard to the scenario's own ε floor
 design tension cleanly** — it does not touch script `05` or the data panel, and it
 preserves the shared-baseline convention for the climate scenarios (which correctly use the
 baseline 2020 hazard). It flattens the *hazard*; the *benefit*-flatness precondition is now
-certified separately by P3a.
+certified separately by P3a — **which passes on the production run (2026-06-26)**, so the
+stationary null is fully exact.
 
 ### 8.4 Validation reformulation (`09`) — KEEP
 With the cap active, the original `1e-6`/bit-exact tolerances were incompatible with how the
@@ -660,9 +686,10 @@ still would **not close** it — so the substantive conclusion is unchanged, and
 is optional polish, not a correction needed for the result.
 
 ### 9.5 Tooling produced
-- `10_figures.R` — `ggplot2`/`flextable`, table + six figures from the two CSVs → `output_figs/`.
-- `10_extract_schedules.R` — re-derives and exports the per-parcel acquisition schedule
-  (with EAU coordinates) for mapping, since `08` does not persist schedules (§4.1, §6 item 7).
+- `10_results_figs.R` — single `ggplot2`/`flextable` reporting script: two tables + six
+  figures + three maps, all from `08`'s saved CSVs → `output_figs/` (no solver). *(Updated
+  2026-06-26: this consolidates the former `10_figures.R` and the retired extract/map
+  scripts; the schedule it maps now comes directly from `08` — §4.1, §6 items 3 & 7.)*
 
 ### 9.6 Decision
 **Adopt spend-down (`"spend"`) as the production rule.** It is realistic, it leaves the
