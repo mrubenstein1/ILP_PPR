@@ -6,7 +6,7 @@
 # epsilon: minimum background risk of conversion applied to all EAUs with
 #          prop_suitable > 0. Reflects that even stable or recovering parcels
 #          face some real-world conversion risk if unprotected. Set to 0 to
-#          disable. Candidate for sensitivity analysis.
+#          disable. 
 #
 # Special cases:
 #   prop_suitable[t] = 0  : trans_prob = 0 (no habitat, no conservation urgency)

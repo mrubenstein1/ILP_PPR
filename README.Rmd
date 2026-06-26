@@ -30,43 +30,22 @@ The spatial unit is the **EAU** (Equal Area Unit, ~282 km²). After dropping 4 W
 Management Districts, the analysis uses **841 EAUs across 20 WMDs**, over **9 decadal
 periods** and **5 scenarios** (RCP 4.5/8.5 × wet/dry, plus a stationary null).
 
-## Key result
-
-Foresight matters, and substantially. Across the four climate scenarios, the rolling
-policy beats myopic by **~13–15%** and greedy by **~43–46%** on **value_added** (the
-conservation value acquisition actually creates, `J − J_baseline`). The gap is invisible
-on the total landscape objective `J` (~0.09%, because only ~60 of 841 parcels are ever
-acquired) and must be read on value_added — the driver reports both.
-
-The cost of myopia is **mis-targeting, not under-deployment.** Each policy is required to
-deploy its full per-period budget (the realistic "spend-down" rule). When myopic is forced
-to spend its whole budget rather than leaving ~22% idle, it buys more parcels but the gap is
-**unchanged** — it cannot tell which currently-safe parcels will become valuable losses, so
-the extra spending is blind. Foresight's value is knowing *which* parcels to protect.
-
-**For the full rationale, locked design decisions, and limitations, read
-`PPR_project_handoff.md`.** For the solver-runtime investigation and its resolution, read
-`myopic_policy_diagnostic.md`.
 
 ## How to run
 
-Requires R with the native **Gurobi** R package and an active (academic) license; CBC and
-other open solvers do not scale to N = 841.
+Requires R with the native **Gurobi** R package and an active (academic) license
 
-1. Data pipeline (scripts `01`–`06`) — already built; produces
+1. Data pipeline (scripts `01`–`06`) — produces
    `input_data/data_panel.rds`.
 2. `09__validation.R` — run first, with Gurobi active, to certify the formulation (P1–P5).
-   It is a validate-before-trust gate, **not a per-run dependency**: re-run it only when the
-   core engine `07` changes (formulation, policies, solver wrapper, scenario assembly),
-   when `SPEND_DOWN_MODE` changes (P4 runs in the active mode), or when the upstream data
-   P3 depends on changes. You do *not* re-run it every time you re-run `08`.
+   Does *not* need to be re-run  `08` is run
 3. `08__run_models.R` — runs all three models on all five scenarios and writes results to
-   `output_data/`. It now also **persists the per-parcel acquisition schedule** (with EAU
-   coordinates) — so reporting/mapping never re-solves. Run single-thread + seeded
+   `output_data/`. Includes a per-parcel acquisition schedule (with EAU
+   coordinates) to facilitate production of maps. Run single-thread + seeded
    (`REPRODUCIBLE <- TRUE`) for bit-reproducible reported numbers *and* a stable map
    footprint. Budget deployment is controlled by `SPEND_DOWN_MODE` near the top of `07`
-   (default `"spend"`, the production rule; `"off"` reproduces the pre-spend-down numbers).
-4. `10_results_figs.R` — pure reader of `08`'s outputs; builds the two results tables, six
+   (default `"spend"` forces the model to exhaust the budget each time period).
+4. `10_results_figs.R` — reads `08`'s outputs; builds the two results tables, six
    figures, and three maps (`ggplot2`/`flextable`; `terra`/`sf` only for the optional WMD
    outline overlay) into `output_figs/`. Set `DRAW_MAPS <- FALSE` for tables+figures only.
 
