@@ -1,7 +1,7 @@
 ---
 title: "PPR Land Acquisition Under Climate Non-Stationarity"
 output: html_document
-date: "2026-06-25"
+date: "2026-06-26"
 ---
 
 ```{r setup, include=FALSE}
@@ -56,17 +56,23 @@ other open solvers do not scale to N = 841.
 1. Data pipeline (scripts `01`–`06`) — already built; produces
    `input_data/data_panel.rds`.
 2. `09__validation.R` — run first, with Gurobi active, to certify the formulation (P1–P5).
+   It is a validate-before-trust gate, **not a per-run dependency**: re-run it only when the
+   core engine `07` changes (formulation, policies, solver wrapper, scenario assembly),
+   when `SPEND_DOWN_MODE` changes (P4 runs in the active mode), or when the upstream data
+   P3 depends on changes. You do *not* re-run it every time you re-run `08`.
 3. `08__run_models.R` — runs all three models on all five scenarios and writes results to
-   `output_data/`. Run single-thread + seeded for bit-reproducible reported numbers. Budget
-   deployment is controlled by `SPEND_DOWN_MODE` near the top of `07` (default `"spend"`,
-   the production rule; `"off"` reproduces the pre-spend-down numbers).
-4. `10_figures.R` — builds the results table and six figures (`ggplot2`/`flextable`) from
-   the two output CSVs into `output_figs/`. Reproducible from the CSVs alone.
-5. `10_extract_schedules.R` — (for maps) re-runs the policies and exports the per-parcel
-   acquisition schedule with EAU coordinates; needed because `08` does not persist schedules.
+   `output_data/`. It now also **persists the per-parcel acquisition schedule** (with EAU
+   coordinates) — so reporting/mapping never re-solves. Run single-thread + seeded
+   (`REPRODUCIBLE <- TRUE`) for bit-reproducible reported numbers *and* a stable map
+   footprint. Budget deployment is controlled by `SPEND_DOWN_MODE` near the top of `07`
+   (default `"spend"`, the production rule; `"off"` reproduces the pre-spend-down numbers).
+4. `10_results_figs.R` — pure reader of `08`'s outputs; builds the two results tables, six
+   figures, and three maps (`ggplot2`/`flextable`; `terra`/`sf` only for the optional WMD
+   outline overlay) into `output_figs/`. Set `DRAW_MAPS <- FALSE` for tables+figures only.
 
-Outputs: `output_data/model_results.{rds,csv}`, `model_trajectories.csv`, and
-`solver_convergence.csv` (a per-run record of how often the per-solve time cap bound).
+Outputs: `output_data/model_results.{rds,csv}`, `model_trajectories.csv`,
+`acquisition_schedule_spatial.csv` (the per-parcel schedule, EAU-keyed with coordinates),
+and `solver_convergence.csv` (a per-run record of how often the per-solve time cap bound).
 
 ## Scripts
 
@@ -92,19 +98,26 @@ Outputs: `output_data/model_results.{rds,csv}`, `model_trajectories.csv`, and
    **spend-down** block (`SPEND_DOWN_MODE`, the value-first/full-budget-deployment tiebreak)
    live in parameter blocks near the top.
 8. **`08__run_models`** — driver: runs the three models on all scenarios, scores each
-   against its true future, and writes results, trajectories, and a convergence summary.
-   (Does not persist per-parcel schedules — see `10_extract_schedules` for maps.)
+   against its true future, and writes results, trajectories, a convergence summary, and the
+   **per-parcel acquisition schedule joined to EAU coordinates**
+   (`acquisition_schedule_spatial.csv`, also embedded in `model_results.rds`). The schedule
+   join reads `input_data/eau_wmd_lookup.rds`; if absent it warns and writes the schedule
+   without coordinates rather than failing.
 9. **`09__validation`** — correctness suite (P1–P5) plus a documented stub for the deferred
    MDP comparison. Formulation tests run with spend-down off; the ordering test runs in the
    active mode.
 
 **Reporting / mapping:**
 
-10. **`10_figures`** — reproducible `ggplot2`/`flextable` script that builds the results
-    table and six figures from the output CSVs into `output_figs/`.
-11. **`10_extract_schedules`** — re-derives and exports the per-parcel acquisition schedule
-    (with EAU coordinates) for mapping. *(Shares the `10` prefix with the archived
-    diagnostics below — separate things; rename if confusing.)*
+10. **`10_results_figs`** — single pure-reader reporting script: builds two results tables
+    + six figures (`ggplot2`/`flextable`) **and** three acquisition maps (footprint by
+    decade; rolling-vs-myopic foresight difference; wet-vs-dry) from `08`'s saved CSVs into
+    `output_figs/`. No solver/`07` needed. The maps need only `ggplot2`; `terra`/`sf` are
+    used solely for the optional WMD outline overlay (auto-skipped if absent), so a user
+    without the spatial stack still gets tables + figures. Toggle maps with `DRAW_MAPS`.
+
+*Retired:* `10_extract_schedules.R` / `11_extract_schedules.R` (the schedule now comes from
+`08`) and the standalone `11_maps.R` (folded into `10_results_figs`). Delete them.
 
 **Diagnostics (formerly `10`–`14`) — archived.** These resolved the myopic-policy runtime
 question; they are not part of the active pipeline. They (and their outputs) live in
