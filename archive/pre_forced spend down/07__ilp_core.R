@@ -95,35 +95,6 @@ SOLVER_MIP_GAP    <- 1e-4    # Gurobi default; the time cap usually binds first
 SOLVER_THREADS    <- 0L      # 0 = all cores (fast). Set 1L for bit-reproducible runs.
 SOLVER_SEED       <- 1L      # affects only solver tie-breaking
 SOLVER_OUTPUT     <- 0L      # 0 = quiet; 1 = full Gurobi search log
-
-# ── Budget deployment (spend-down) ────────────────────────────────────────────
-# Real managers deploy the whole per-period budget (it cannot be rolled over) and
-# do not leave money idle merely because the next parcel looks low-value under their
-# current belief. Each ILP solve therefore optimises acquisition value FIRST and then,
-# as a STRICTLY LOWER-PRIORITY tiebreak among value-co-optimal plans, deploys the
-# IMPLEMENTED period's budget as fully as possible. This removes a MIPGap-sensitive
-# artefact — myopic leaving ~22% of its budget unspent because its frozen belief
-# assigns the marginal parcels near-zero value, so the solver is indifferent to them —
-# and replaces it with an explicit, defensible behavioural rule.
-#
-#   "off"   — value only. Reproduces the pre-spend-down numbers; used for clean
-#             formulation validation (P1/P2/P5 in 09).
-#   "spend" — secondary tiebreak maximises DOLLARS deployed in the implemented period
-#             ("don't leave money on the table").
-#   "count" — secondary tiebreak maximises NUMBER of parcels acquired (cheaper-leaning;
-#             "more lottery tickets" on currently-low parcels that may rise in value).
-#
-# Greedy already deploys its budget by construction (it buys down its ranked list until
-# nothing affordable remains), so this knob affects only the ILP policies — materially
-# for myopic, negligibly for rolling (which already nearly exhausts the budget).
-SPEND_DOWN_MODE   <- "spend"   # "off" | "spend" | "count"
-
-# Max fraction of the primary (value) objective the spend tiebreak may sacrifice.
-# Kept tiny so the value-optimal core is PINNED and only genuinely marginal parcels
-# (value within this tolerance of the optimum) are added to fill the budget. With the
-# core pinned, the tiebreak is pure ADDITION of non-negative-value parcels in the
-# implemented period, so realised (true) J can only weakly improve — see header note.
-SPEND_DOWN_RELTOL <- 1e-4
 # ══════════════════════════════════════════════════════════════════════════════
 
 
@@ -263,9 +234,7 @@ make_budget <- function(cost_mat, n_eaus = BUDGET_EAUS_PER_PERIOD) {
 # rhs, vtype) form that most R MILP interfaces accept.
 
 solve_acquisition_ilp <- function(V_mat, cost_mat, budget, avail, periods,
-                                   relax = FALSE,
-                                   spend_down = SPEND_DOWN_MODE,
-                                   implement_periods = periods) {
+                                   relax = FALSE) {
   if (length(avail) == 0 || length(periods) == 0)
     return(list(picks = data.frame(eau_idx = integer(0), period = integer(0)),
                 objval = 0, x = numeric(0), grid = NULL))
@@ -303,6 +272,7 @@ solve_acquisition_ilp <- function(V_mat, cost_mat, budget, avail, periods,
   
   model <- list(
     A          = A,
+    obj        = obj,
     sense      = sense,
     rhs        = rhs,
     lb         = rep(0, nvar),
@@ -310,35 +280,6 @@ solve_acquisition_ilp <- function(V_mat, cost_mat, budget, avail, periods,
     vtype      = if (relax) "C" else "B",
     modelsense = "max"
   )
-
-  # Primary objective is ALWAYS the acquisition value V. When spend-down is active
-  # (integer solves only), attach a strictly lower-priority secondary objective that,
-  # among value-co-optimal plans, maximises deployment of the IMPLEMENTED period's
-  # budget. Targeting only `implement_periods` (the period(s) actually enacted — a
-  # single period in the rolling/myopic loop) is deliberate: it forces the budget we
-  # are about to spend to be deployed now, and avoids a perverse "defer to a pricier
-  # later period" tie that a horizon-wide spend objective would create under cost
-  # inflation. SPEND_DOWN_RELTOL pins the value-optimal core; only marginal parcels
-  # are added.
-  use_spend_down <- !relax && !identical(spend_down, "off")
-  if (use_spend_down) {
-    in_impl <- grid$period %in% implement_periods
-    sec <- numeric(nvar)
-    if (identical(spend_down, "spend")) {
-      sec[in_impl] <- costs_s[in_impl]   # maximise dollars deployed (scaled units)
-    } else if (identical(spend_down, "count")) {
-      sec[in_impl] <- 1                  # maximise number of parcels acquired
-    } else {
-      stop("spend_down must be one of 'off', 'spend', 'count'.")
-    }
-    model$multiobj <- list(
-      list(objn = obj, priority = 2L, weight = 1, reltol = SPEND_DOWN_RELTOL, abstol = 0),
-      list(objn = sec, priority = 1L, weight = 1, reltol = 0,                 abstol = 0)
-    )
-  } else {
-    model$obj <- obj
-  }
-
   res <- gurobi::gurobi(model, params = list(
     OutputFlag = SOLVER_OUTPUT,
     TimeLimit  = SOLVER_TIME_LIMIT,
@@ -367,11 +308,7 @@ solve_acquisition_ilp <- function(V_mat, cost_mat, budget, avail, periods,
   x <- res$x
   chosen <- if (relax) integer(0) else which(x > 0.5)
   picks  <- grid[chosen, , drop = FALSE]
-  # Under multi-objective, res$objval is a vector (one per objective, in list order);
-  # element 1 is the primary acquisition value. Return that scalar so downstream
-  # comparisons (validation P1/P5, reporting) are unaffected by the spend tiebreak.
-  prim_obj <- if (length(res$objval) > 1L) res$objval[[1L]] else res$objval
-  list(picks = picks, objval = prim_obj, x = x, grid = grid)
+  list(picks = picks, objval = res$objval, x = x, grid = grid)
 }
 
 
@@ -384,8 +321,7 @@ solve_acquisition_ilp <- function(V_mat, cost_mat, budget, avail, periods,
 # implement only the current period, advance. Under deterministic foresight this
 # reproduces the full-horizon optimum (see run_full_horizon); the loop form is kept
 # for methodological fidelity and so stochastic extensions can slot in.
-run_rolling_horizon <- function(b_mat, lam_mat, cost_mat, budget, delta = DELTA,
-                                spend_down = SPEND_DOWN_MODE) {
+run_rolling_horizon <- function(b_mat, lam_mat, cost_mat, budget, delta = DELTA) {
   n_eau <- nrow(b_mat); n_t <- ncol(b_mat)
   V <- t(vapply(seq_len(n_eau),
                 function(i) compute_value_vector(b_mat[i, ], lam_mat[i, ], delta),
@@ -394,8 +330,7 @@ run_rolling_horizon <- function(b_mat, lam_mat, cost_mat, budget, delta = DELTA,
   for (tnow in seq_len(n_t)) {
     avail <- which(is.na(acquired))
     if (length(avail) == 0) break
-    sol <- solve_acquisition_ilp(V, cost_mat, budget, avail, periods = tnow:n_t,
-                                 spend_down = spend_down, implement_periods = tnow)
+    sol <- solve_acquisition_ilp(V, cost_mat, budget, avail, periods = tnow:n_t)
     now <- sol$picks$eau_idx[sol$picks$period == tnow]
     acquired[now] <- tnow
   }
@@ -407,8 +342,7 @@ run_rolling_horizon <- function(b_mat, lam_mat, cost_mat, budget, delta = DELTA,
 # implement only the current period, advance and observe the true next period.
 # Survival is global under the frozen belief, so under a stationary scenario this
 # equals the rolling policy exactly.
-run_myopic_ilp <- function(b_mat, lam_mat, cost_mat, budget, delta = DELTA,
-                           spend_down = SPEND_DOWN_MODE) {
+run_myopic_ilp <- function(b_mat, lam_mat, cost_mat, budget, delta = DELTA) {
   n_eau <- nrow(b_mat); n_t <- ncol(b_mat)
   acquired <- rep(NA_integer_, n_eau)
   for (tnow in seq_len(n_t)) {
@@ -420,8 +354,7 @@ run_myopic_ilp <- function(b_mat, lam_mat, cost_mat, budget, delta = DELTA,
       lam_frozen <- rep(lam_mat[i, tnow], n_t)   # believe current hazard persists
       Vf[i, ] <- compute_value_vector(b_frozen, lam_frozen, delta)
     }
-    sol <- solve_acquisition_ilp(Vf, cost_mat, budget, avail, periods = tnow:n_t,
-                                 spend_down = spend_down, implement_periods = tnow)
+    sol <- solve_acquisition_ilp(Vf, cost_mat, budget, avail, periods = tnow:n_t)
     now <- sol$picks$eau_idx[sol$picks$period == tnow]
     acquired[now] <- tnow
   }
@@ -430,9 +363,7 @@ run_myopic_ilp <- function(b_mat, lam_mat, cost_mat, budget, delta = DELTA,
 
 # GREEDY HEURISTIC — status quo. Each period rank available EAUs by current
 # benefit-cost ratio (scaled_abundance / cost) and acquire down the list while the
-# budget allows. No foresight, no survival weighting, no future periods. (Greedy
-# already deploys its budget by construction — it buys until nothing affordable
-# remains — so the SPEND_DOWN_MODE knob does not apply to it.)
+# budget allows. No foresight, no survival weighting, no future periods.
 run_greedy <- function(b_mat, cost_mat, budget) {
   n_eau <- nrow(b_mat); n_t <- ncol(b_mat)
   acquired <- rep(NA_integer_, n_eau)
@@ -454,19 +385,13 @@ run_greedy <- function(b_mat, cost_mat, budget) {
 
 # FULL-HORIZON single solve (validation reference for the rolling policy). Solves
 # the whole multi-period program once with the true global V.
-run_full_horizon <- function(b_mat, lam_mat, cost_mat, budget, delta = DELTA,
-                             spend_down = SPEND_DOWN_MODE) {
+run_full_horizon <- function(b_mat, lam_mat, cost_mat, budget, delta = DELTA) {
   n_eau <- nrow(b_mat); n_t <- ncol(b_mat)
   V <- t(vapply(seq_len(n_eau),
                 function(i) compute_value_vector(b_mat[i, ], lam_mat[i, ], delta),
                 numeric(n_t)))
-  # Single full-horizon solve: every period is "enacted", so implement_periods is the
-  # whole horizon (the default). NB validation calls this with spend_down = "off" so the
-  # rolling-vs-full equivalence (P2) is checked on the pure value optimum, independent of
-  # any spend tiebreak (which a single solve and the per-period loop break differently).
   sol <- solve_acquisition_ilp(V, cost_mat, budget,
-                               avail = seq_len(n_eau), periods = seq_len(n_t),
-                               spend_down = spend_down)
+                               avail = seq_len(n_eau), periods = seq_len(n_t))
   acquired <- rep(NA_integer_, n_eau)
   if (nrow(sol$picks) > 0) acquired[sol$picks$eau_idx] <- sol$picks$period
   acquired

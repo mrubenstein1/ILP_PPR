@@ -22,7 +22,7 @@
 # value_added view makes the model ordering visible where the total-J view masks it.
 # ══════════════════════════════════════════════════════════════════════════════
 
-source("07__ilp_core_spenddown.R")
+source("07__ilp_core.R")
 
 # ── Reproducibility ───────────────────────────────────────────────────────────####
 # A capped solve under multi-threaded search is not bit-reproducible run-to-run
@@ -33,11 +33,6 @@ source("07__ilp_core_spenddown.R")
 # and far below the ~13% effect, but pin this TRUE for anything you report).
 REPRODUCIBLE <- FALSE
 if (REPRODUCIBLE) SOLVER_THREADS <- 1L
-
-cat(sprintf("Run config: spend_down = '%s' | budget = %d median-EAUs/period | delta = %.2f | reproducible = %s\n",
-            SPEND_DOWN_MODE, BUDGET_EAUS_PER_PERIOD, DELTA, REPRODUCIBLE))
-if (identical(SPEND_DOWN_MODE, "off"))
-  cat("  (spend_down off — reproduces the pre-spend-down numbers.)\n")
 
 # ── 0. Load the data panel ────────────────────────────────────────────────────####
 data_panel <- readRDS("input_data/data_panel.rds")
@@ -170,7 +165,6 @@ saveRDS(list(results = results, trajectories = trajectories,
                            solver_time_limit = SOLVER_TIME_LIMIT,
                            solver_mip_gap = SOLVER_MIP_GAP,
                            solver_threads = SOLVER_THREADS,
-                           spend_down_mode = SPEND_DOWN_MODE,
                            reproducible = REPRODUCIBLE)),
         file.path(OUT_DIR, "model_results.rds"))
 write.csv(results,      file.path(OUT_DIR, "model_results.csv"),      row.names = FALSE)

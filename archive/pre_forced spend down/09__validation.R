@@ -14,16 +14,6 @@
 #
 # Each check appends a PASS/FAIL to `checks`; the script stops if any fails.
 #
-# ── SPEND-DOWN AND VALIDATION ──────────────────────────────────────────────────
-# The formulation-certifying tests run with spend_down = "off" so they certify the
-# pure value optimum, independent of the budget-deployment tiebreak: P1 (ILP == brute
-# force), P2 (rolling loop == full-horizon solve), and P5 (LP >= ILP) all concern the
-# primary objective, which the spend tiebreak never changes. The behavioural tests run
-# in the ACTIVE SPEND_DOWN_MODE: P4 (rolling >= myopic) checks the ordering of the
-# policy as deployed, and P3's informational realised gap reflects production. P3a/P3b
-# are solver-independent (properties of the input and value vectors) and unaffected by
-# either setting.
-#
 # ── TOLERANCES UNDER THE PRODUCTION TIME CAP ──────────────────────────────────
 # 07 now caps each solve (SOLVER_TIME_LIMIT) so the production policy is computed
 # the same way it is reported. Two consequences for validation:
@@ -49,7 +39,7 @@
 # instance; P2/P3/P5 then exercise the same solver on the real data.
 # ══════════════════════════════════════════════════════════════════════════════
 
-source("07__ilp_core_spenddown.R")
+source("07__ilp_core.R")
 
 TOL    <- 1e-6     # exact-arithmetic tolerance (P1, and the solver-independent P3 checks)
 VA_TOL <- 0.02    # solver-tolerance checks (P2, P4): fraction of value_added that a
@@ -74,8 +64,7 @@ cat("\nP1  ILP vs brute force (synthetic)\n")
                 numeric(ncol(inst$b))))
   bud  <- make_budget(inst$cost, n_eaus = 2)
   ilp  <- solve_acquisition_ilp(V, inst$cost, bud,
-                                avail = seq_len(nrow(V)), periods = seq_len(ncol(V)),
-                                spend_down = "off")
+                                avail = seq_len(nrow(V)), periods = seq_len(ncol(V)))
   bf   <- brute_force_optimum(V, inst$cost, bud)
   report("ILP objective equals brute-force optimum",
          abs(ilp$objval - bf) < 1e-4,
@@ -88,8 +77,8 @@ cat("\nP2  rolling-loop vs full-horizon solve (real scenario rcp85_dry)\n")
 {
   sc  <- build_scenario_matrices(data_panel, SCENARIOS[["rcp85_dry"]])
   bud <- make_budget(sc$cost)
-  roll <- run_rolling_horizon(sc$b, sc$lam, sc$cost, bud, spend_down = "off")
-  full <- run_full_horizon(sc$b, sc$lam, sc$cost, bud, spend_down = "off")
+  roll <- run_rolling_horizon(sc$b, sc$lam, sc$cost, bud)
+  full <- run_full_horizon(sc$b, sc$lam, sc$cost, bud)
   Jr <- evaluate_policy(roll, sc$b, sc$lam, sc$cost)$J
   Jf <- evaluate_policy(full, sc$b, sc$lam, sc$cost)$J
   Jb <- evaluate_policy(rep(NA_integer_, nrow(sc$b)), sc$b, sc$lam, sc$cost)$J
@@ -160,10 +149,6 @@ cat("\nP3  stationary null (solver-independent: flat inputs + frozen value == tr
 # ── P4. ordering: rolling >= myopic on every scenario (no order violations) ───####
 cat("\nP4  ordering rolling >= myopic across all scenarios\n")
 {
-  # Run in the ACTIVE SPEND_DOWN_MODE (the production configuration): the foresight
-  # ordering must hold for the policy as actually deployed. Spend-down lifts myopic
-  # toward rolling (narrows the gap) but cannot make myopic exceed the foresight
-  # optimum, so rolling >= myopic should still hold with margin.
   ok_all <- TRUE
   for (sc_name in names(SCENARIOS)) {
     sc  <- build_scenario_matrices(data_panel, SCENARIOS[[sc_name]])
@@ -199,7 +184,7 @@ cat("\nP5  LP relaxation >= ILP (real scenario rcp45_wet)\n")
                 function(i) compute_value_vector(sc$b[i, ], sc$lam[i, ]),
                 numeric(ncol(sc$b))))
   ip <- solve_acquisition_ilp(V, sc$cost, bud, seq_len(nrow(V)), seq_len(ncol(V)),
-                              relax = FALSE, spend_down = "off")
+                              relax = FALSE)
   lp <- solve_acquisition_ilp(V, sc$cost, bud, seq_len(nrow(V)), seq_len(ncol(V)),
                               relax = TRUE)
   report("LP relaxation >= ILP optimum",
