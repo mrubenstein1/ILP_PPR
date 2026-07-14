@@ -37,7 +37,7 @@ source("07__ilp_core.R")
 # so the figures are exactly reproducible. Set FALSE for a faster, multi-threaded
 # pass (results then carry ~0.3%-scale run-to-run wobble — fine for exploration,
 # and far below the ~13% effect, but pin this TRUE for anything you report).
-REPRODUCIBLE <- FALSE
+REPRODUCIBLE <- TRUE
 if (REPRODUCIBLE) SOLVER_THREADS <- 1L
 
 cat(sprintf("Run config: spend_down = '%s' | budget = %d median-EAUs/period | delta = %.2f | reproducible = %s\n",
