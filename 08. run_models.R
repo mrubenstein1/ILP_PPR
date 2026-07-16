@@ -28,7 +28,7 @@
 # value_added view makes the model ordering visible where the total-J view masks it.
 # ══════════════════════════════════════════════════════════════════════════════
 
-source("07__ilp_core.R")
+source("07. ilp_core.R")
 
 # ── Reproducibility ───────────────────────────────────────────────────────────####
 # A capped solve under multi-threaded search is not bit-reproducible run-to-run
