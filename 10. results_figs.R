@@ -31,8 +31,9 @@
 # ══════════════════════════════════════════════════════════════════════════════
 
 # ── CONFIG ────────────────────────────────────────────────────────────────────
-IN_DIR   <- "output_data"     # folder holding the two CSVs (08's OUT_DIR)
-OUT_DIR  <- "output_figs"     # where tables + figures are written
+RATE_LABEL <- "data_derived"   # or: data_derived, wetland_high, grass_low, grass_high
+IN_DIR     <- paste0("output_data_", RATE_LABEL)
+OUT_DIR    <- paste0("output_figs/_", RATE_LABEL)
 RESULTS  <- file.path(IN_DIR, "model_results.csv")
 TRAJ     <- file.path(IN_DIR, "model_trajectories.csv")
 SCHEDULE <- file.path(IN_DIR, "acquisition_schedule_spatial.csv")  # 08's persisted schedule (maps)
