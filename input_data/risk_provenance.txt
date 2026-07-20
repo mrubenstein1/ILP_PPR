@@ -1,0 +1,16 @@
+PANEL RISK PROVENANCE
+---------------------
+risk_model:    uniform_literature (05b__risk_uniform.R)
+rate_label:    wetland_low
+annual_rate:   0.000900  (0.0900%/yr)
+p_decade:      0.00896364  (0.8964% per decade)
+terminal_year: 2100 (trans_prob = 0)
+cum_loss_2100:  0.0695
+stamped_at:    2026-07-19 21:02:56
+
+Source: Kemink et al. 2023 (Conserv Sci Pract 5:e12939), summarizing
+Oslund et al. 2010, Doherty et al. 2013, Dahl 2014. Grassland rates from
+Doherty et al. 2013 (Wildl Soc Bull 37:546-563).
+
+To restore the data-derived risk model: re-run 05__risk_of_loss.R then
+06__cost_data.R, and delete this file.

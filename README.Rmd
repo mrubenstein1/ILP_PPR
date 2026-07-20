@@ -55,7 +55,7 @@ and `solver_convergence.csv` (a per-run record of how often the per-solve time c
 
 ## Scripts
 
-**Data pipeline (complete):**
+**Data pipeline:**
 
 1. **`01__create_EAUs`** — grids the WMD shapefile into EAUs; builds an EAU↔WMD lookup.
 2. **`02__EAU_prop_suitable`** — proportion of suitable habitat per EAU from USGS FOREsce
@@ -68,6 +68,26 @@ and `solver_convergence.csv` (a per-run record of how often the per-solve time c
    proxy with a small background floor ε. Provisional; isolated to this one column so the
    metric can be swapped without touching model code.
 6. **`06__cost_data`** — acquisition cost per EAU (Nolte 2020 FMV; 2%/yr inflation).
+
+**Data Panel Produced via Data Pipeline:**
+## Variables
+
+| Variable | Type | Description |
+|---|---|---|
+| `eau_id` | integer | Unique EAU identifier. Assigned in script 01 by re-indexing valid raster cells 1:N, sorted by WMD (alphabetical) then original cell number. Stable across all scripts. |
+| `wmd_id` | character | Name of the Wetland Management District containing the EAU centroid. 20 distinct values after exclusions. |
+| `year` | integer | Decision time step: 2020 (baseline) and each decade 2030–2100. Nine distinct values. |
+| `rcp` | character | Emissions scenario: `"45"`, `"85"`, `"baseline"` (2020 only), or `"stationary"` (no-change counterfactual). |
+| `gcm` | character | Climate model variant: `"wet"`, `"dry"`, `"baseline"`, or `"stationary"`. Note that `prop_suitable` does not vary by `gcm` — only the benefit data are GCM-specific. |
+| `prop_suitable` | double | Proportion (0–1) of the EAU classified as suitable habitat. |
+| `abs_abundance` | double | WMD-level total duck abundance for that year and scenario, repeated across every EAU in the WMD. |
+| `scaled_abundance` | double | EAU-level share of `abs_abundance`, allocated by habitat area. The benefit term used in the ILP. |
+| `eau_row` | double | Internal row-order index used to align the land cover matrices to the EAU lookup table. `NA` for 2020 and stationary rows. Artifact of construction — not for analytical use. |
+| `total_prop_suitable` | double | Sum of `prop_suitable` across all EAUs within the WMD × year × `rcp` × `gcm` group. Denominator for `habitat_share`. |
+| `habitat_share` | double | `prop_suitable / total_prop_suitable`; the EAU's fraction of its WMD's suitable habitat in that scenario-year. `NA` where the WMD total is 0. |
+| `trans_prob` | double | Per-period risk of habitat loss (transition probability), bounded [0, 1]. |
+| `cost` | double | Estimated acquisition cost of the EAU in nominal USD for that decision year. Scenario-invariant. |
+
 
 **Modeling core:**
 
@@ -95,12 +115,6 @@ and `solver_convergence.csv` (a per-run record of how often the per-solve time c
     used solely for the optional WMD outline overlay (auto-skipped if absent), so a user
     without the spatial stack still gets tables + figures. Toggle maps with `DRAW_MAPS`.
 
-*Retired:* `10_extract_schedules.R` / `11_extract_schedules.R` (the schedule now comes from
-`08`) and the standalone `11_maps.R` (folded into `10_results_figs`). Delete them.
-
-**Diagnostics (formerly `10`–`14`) — archived.** These resolved the myopic-policy runtime
-question; they are not part of the active pipeline. They (and their outputs) live in
-`archive/` with a `PROVENANCE.md` mapping each to the production decision it justifies.
 
 ## References and sources
 
