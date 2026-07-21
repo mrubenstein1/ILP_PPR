@@ -34,6 +34,63 @@ tp_df <- data_panel %>%
          rcp_label = factor(rcp_label, levels = rcp_labels))
 
 
+### Basic summary stats
+library(dplyr)
+library(ggplot2)
+
+data_panel <- readRDS("input_data/data_panel.rds")
+
+# Turn off scientific notation for this session's printing
+options(scipen = 999)
+
+tp <- data_panel$trans_prob
+
+# ── 1. Summary statistics table ───────────────────────────────────────────────
+summary_tbl <- data.frame(
+  statistic = c("n", "n_missing", "mean", "sd", "min",
+                "p25", "median", "p75", "p90", "max"),
+  value = c(
+    length(tp),
+    sum(is.na(tp)),
+    mean(tp,   na.rm = TRUE),
+    sd(tp,     na.rm = TRUE),
+    min(tp,    na.rm = TRUE),
+    quantile(tp, 0.25, na.rm = TRUE),
+    median(tp, na.rm = TRUE),
+    quantile(tp, 0.75, na.rm = TRUE),
+    quantile(tp, 0.90, na.rm = TRUE),
+    max(tp,    na.rm = TRUE)
+  )
+)
+summary_tbl$value <- round(summary_tbl$value, 6)
+print(summary_tbl, row.names = FALSE)
+
+summary(tp)
+
+# ── 2. Frequency distribution (binned counts) ─────────────────────────────────
+freq_tbl <- data_panel %>%
+  mutate(bin = cut(trans_prob,
+                   breaks = c(-Inf, 0, 0.001, 0.01, 0.05, 0.10, 0.25, Inf),
+                   labels = c("0", "(0, 0.001]", "(0.001, 0.01]", "(0.01, 0.05]",
+                              "(0.05, 0.10]", "(0.10, 0.25]", "> 0.25"),
+                   right = TRUE)) %>%
+  count(bin, name = "count") %>%
+  mutate(pct = round(100 * count / sum(count), 1))
+print(as.data.frame(freq_tbl), row.names = FALSE)
+
+# ── 3. Boxplot ────────────────────────────────────────────────────────────────
+ggplot(data_panel, aes(x = trans_prob)) +
+  geom_boxplot() +
+  scale_x_continuous(labels = scales::label_number(accuracy = 0.001)) +
+  labs(x = "trans_prob", title = "Distribution of trans_prob (all EAUs, years, scenarios)") +
+  theme_bw()
+
+
+
+
+
+
+
 # ════════════════════════════════════════════════════════════════════════════════
 # SECTION 1: TEMPORAL PLOTS
 # ════════════════════════════════════════════════════════════════════════════════

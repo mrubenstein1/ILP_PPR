@@ -148,13 +148,7 @@ style_grouped_table <- function(df, groups, subs, footer_text = NULL) {
     ft <- fontsize(ft, size = 8.5, part = "footer")
     ft <- color(ft, color = "grey40", part = "footer")
   }
-  ## Give every value column the SAME width so the left/right model groups stay
-  ## symmetric. Without this, autofit lets a long footnote stretch one group's
-  ## columns much wider than the other's (this is what skewed Table 2). ------------
-  wv <- dim_pretty(ft)$widths
-  ft <- width(ft, j = 1,     width = wv[1])          # Scenario keeps its natural width
-  ft <- width(ft, j = vcols, width = max(wv[-1]))    # all value columns equal
-  set_table_properties(ft, layout = "autofit", width = 1)
+  set_table_properties(autofit(ft), layout = "autofit", width = 1)
 }
 
 ## build the two display tables from the raw CSVs -------------------------------
@@ -214,54 +208,6 @@ caps <- list(
      10_results_assets.R last refreshed the underlying numbers/figures.) -->
 ```
 
-# Project Overview
-This project asks whether accounting for non-stationarity leads to better land-acquisition decisions for waterfowl conservation in the U.S. Prairie Pothole Region (PPR) under different climate scenarios. It builds three decision models and compares their performance across climate-change
-scenarios and a stationary null.
-
-The three models acquire land period by period (decadal steps, 2020–2100) under a budget constraint:
-
-- **Greedy** — status-quo heuristic: rank parcels by current benefit-to-cost ratio, buy
-  down the list. No foresight.
-- **Myopic ILP** — re-optimizes each decade but freezes current benefit and hazard and
-  assumes they persist (a fabricated stationary future); implements the current decade,
-  then re-solves.
-- **Rolling-horizon ILP** — same structure, but uses the true projected trajectories. The
-  foresighted benchmark. Uses Gurobi solver (academic license). 
-
-The spatial unit is the **EAU** (Equal Area Unit, ~282 km²). After dropping 4 Wetland
-Management Districts, the analysis uses **841 EAUs across 20 WMDs**, over **9 decadal
-periods** and **5 scenarios** (RCP 4.5/8.5 × wet/dry, plus a stationary null).
-
-# Data Sources
-
-- **Benefit**: McKenna, Owen P., et al. "Conservation enhances resilience of the United States Duck Factory as environmental shifts may diminish landscape-scale waterfowl breeding capacity." BioScience (2026): biag091. 
-  - linear interpolation to get from obs/mid-century/end of century to decadal time steps. 
-  - projected over RCP 4.5/8.5 × wet/dry scenarios. 
-
-- **Cost**: Nolte, Christoph. "High-resolution land value maps reveal underestimation of conservation costs in the United States.". Proceedings of the National Academy of Sciences. 117.47 (2020): 29577-29583. 
-  - assume 2% unfiform annual increase
-  - note no emissions or precip scenarios. 
- 
-
-- **Risk**: FOREsce (derived). Sohl, Terry L., et al. "Spatially explicit land-use and land-cover scenarios for the Great Plains of the United States." Agriculture, Ecosystems & Environment 153 (2012): 1-15.
-  - calculated as net suitable habitat loss per time step. 
-  - note this has RCP 4.5 & 8.5 scenarios, but no wet/dry. 
-  
-# Model Notes
-
-- **Acquisition value is calculated as expected loss prevented:**
-
-  `V[i,τ] = Σ_{t=τ}^{T} δ^t · b[i,t] · (1 − S[i,t])`.
-  
-  This is the value gained by removing conversion risk from parcel i starting at τ (i.e., value of acquiring a parcel). All unacquired parcels are treated as available at each re-solve; conversion risk does not remove parcels from the set, but instead enters **only** through the weighting in the objective. Acquisition removes this weight and counts full (discounted) value. This is justified because the **per-period** conversion probability is small, so few parcels actually convert out of availability within a decade — even though the *cumulative*, discounted loss-prevented value (value_added) is substantial enough for the policies to separate clearly.
-
-- **Budget**: set to a scalable amount based on a number of "median priced" EAUs per period. currently set to 5. 
-
-- **Discount Factor**: 0.95 annual 
-
-{{< pagebreak >}}
-
-
 # Results
 
 ## Acquisition value over baseline
@@ -291,7 +237,7 @@ As expected, the greedy policy displays a larger gap than the myopic policy unde
 This "value added gap" becomes our metric of greatest interest: because the absolute value of any acquisition policy in this landscape is relatively low, this metric helps demonstrate the value of foresight in acquisition policy. My interpretation: As compared to the best possible acquisition policy, how well does the greedy or myopic policy perform? How much conservation does a suboptimal acquisition policy leave on the table?
 
 ```{=latex}
-\needspace{16\baselineskip}   % keep this whole table (incl. its footnote) on one page
+\needspace{13\baselineskip}   % keep this whole table on one page
 ```
 
 ```{r}
@@ -299,9 +245,9 @@ This "value added gap" becomes our metric of greatest interest: because the abso
 #| tbl-cap: !expr caps$tbl_gap_vs_rolling
 style_grouped_table(
   tbl2, groups2, subs2,
-  footer_text = c(
-    "gap % = shortfall as % of rolling's value-added.",
-    paste0(DP, " = rolling value-added \u2212 model value-added (discounted duck-pairs).")))
+  footer_text = paste0(
+    "gap % = shortfall as % of rolling's value-added.  ", DP,
+    " = rolling value-added \u2212 model value-added (discounted duck-pairs)."))
 ```
 
 
@@ -321,8 +267,8 @@ One counter-intuitive observation: the performance between different acquisition
 knitr::include_graphics(file.path(OUT_DIR, "overtime_gap.png"))
 ```
 
-{{< pagebreak >}}
 
+{{< pagebreak >}}
 
 ## Landscape decline
 
@@ -336,7 +282,6 @@ knitr::include_graphics(file.path(OUT_DIR, "decline.png"))
 ```
 
 {{< pagebreak >}}
-
 
 ## Acquisitions by policy: rolling vs myopic
 
@@ -381,11 +326,6 @@ knitr::include_graphics(file.path(OUT_DIR, "prevented_loss_diff.png"))
 
 # Updates
 
-```{=html}
-<!-- One-off / hand-entered content. These tables are typed inline and are NOT
-     produced by 10_results_assets.R, so re-running the asset script won't change
-     them. They still use the house table style and auto-number after the others. -->
-```
 
 ## Temporal alignment of benefit data
 
@@ -438,6 +378,9 @@ style_grouped_table(align_mid, groups_mid, subs_mid,
 ```
 
 
+## Temporal alignment: gap vs. rolling
+
+
 ```{=latex}
 \needspace{12\baselineskip}   % keep this whole table on one page
 ```
@@ -461,37 +404,4 @@ style_grouped_table(align_gap, groups_gap, subs_gap,
                        " comparison)."))
 ```
 
-{{< pagebreak >}}
 
-# Conversion Risk
-
-## Uniform, Literature-derived
-- Doherty et al 2018:  
-  - 0.57% per year wetland loss in the Prairie Coteau ecoregion in Minnesota 
-  - 1.33% of grasslands were lost per year during 1979–1997 across the entire United States Prairie Pothole Region 
-
-- Rashford et al 2011:  
-  - 1.33% of grasslands were lost (converted to cultivated crops) per year during 1979–1997 across the entire United States Prairie Pothole Region 
-
-- Oslund et al 2011: 
-  - Wetland change in MN from 1980-2007: 4.3% loss in total wetland area across MN PPR.  
-  - Kemnick et al 2023: Wetland drainage rates: upper & lower bound (0.57% and 0.09%/year); from Dahl, 2014; Oslund et al., 2010 
-  
-Compare this to current net habitat proxy rates:
-  - mean: 0.47%
-  - median: .0000361%
-  - max: 12%
-
-Expectation: a uniform conversion risk estimate will flatten out regional differences, and close the gap between myopic and rolling (it essentially confirms myopic assumption of stationarity).
-
-Potential path forward: take an approach similar to Kemnick et al 2023: use literature-derived estimates as a landscape total, and use landscape characteristics (i.e., wetland size, surrounding cropland) as a way to rank relatively.
-
-Kemink, Kaylan M., et al. "Quantifying population-level conservation impacts for a perpetual conservation program on private land." Journal of Environmental Management 345 (2023): 118748.
-
-{{< pagebreak >}}
-
-
-# Wet/dry scenarios for land use
-The FOREsce model used to provide landcover classification is the FOREsce GCAM reference scenario. It is provided in RCP 4.5, 8.5, and mean climate scenarios- but there is no wet/dry distinction. For the time being, I have just kept land cover constant across wet/dry scenarios while preserving the 4.5/8.5 distinction. What this means is that only abundance varies across wet/dry scenarios- proportional allocation of ducks within WMDs does not, nor does conversion risk. This isn’t ideal, but I thought it could be a limitation we could live with- but I think it may come out when looking at duck loss prevented by scenario.  I’m not fully sure how to address or whether it’s worth pursuing an alternate data source. 
-
- 

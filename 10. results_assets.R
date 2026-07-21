@@ -10,9 +10,6 @@
 #   • Re-run THIS script      → refresh the numbers, figures, and maps.
 #   • Re-render results.qmd   → rebuild the document around them.
 #
-# The two steps are independent, so your written commentary in results.qmd is never
-# touched by this script. (This is why the .qmd also stamps two dates: when the doc
-# was rendered vs. when these assets were last generated — see run_metadata.json.)
 #
 # Writes to OUT_DIR:
 #   table_over_baseline.csv        value each model creates over the do-nothing baseline
@@ -41,7 +38,12 @@ SCHEDULE <- file.path(IN_DIR, "acquisition_schedule_spatial.csv")  # 08's persis
 
 DPI         <- 300
 BASE_SIZE   <- 12
-BASE_FAMILY <- ""             # "" = system default; set e.g. "Helvetica" if installed
+# Figure/map text (axes, legends, strip titles, colour-bar, on-plot labels) is drawn
+# in this family. "serif" is a portable serif (Times-like) that matches the PDF's
+# roman body font across every ggsave backend (grDevices, cairo, ragg) with no extra
+# packages. For a *pixel-exact* match to the PDF body (Latin Modern Roman), see the
+# note in results.qmd and swap in a registered "Latin Modern Roman" family instead.
+BASE_FAMILY <- "serif"
 SAVE_PDF    <- TRUE           # also write vector PDF alongside each PNG
 
 # palette (models) -------------------------------------------------------------
@@ -108,6 +110,11 @@ theme_ppr <- function(base_size = BASE_SIZE, base_family = BASE_FAMILY) {
     )
 }
 theme_set(theme_ppr())
+
+## on-plot text (e.g. the end-of-line value labels) doesn't read the theme's
+## base_family, so set it explicitly here to keep every glyph in the same font.
+ggplot2::update_geom_defaults("text",  list(family = BASE_FAMILY))
+ggplot2::update_geom_defaults("label", list(family = BASE_FAMILY))
 
 # Saves PNG (300 dpi) + optional vector PDF. Prefers cairo_pdf for font embedding and
 # falls back to the base 'pdf' device (catching the Windows "no cairo" warning) quietly.
