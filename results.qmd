@@ -1,5 +1,5 @@
 ---
-title: "PPR Acquisition Results — `r format(Sys.Date(), '%B %d, %Y')`"
+title: "PPR Acquisition Policy Under Nonstationarity — `r format(Sys.Date(), '%B %d, %Y')`"
 params:
   rate_label: "data_derived"     # render a variant with:  quarto render results.qmd -P rate_label:wetland_high
 format:
@@ -21,7 +21,18 @@ format:
         \usepackage{float}
         \usepackage{caption}
         \captionsetup{skip=6pt, font=small}
+        \usepackage{needspace}   % reserve vertical space so short tables don't split
+        % Render the title, section headings, and any other sans-serif element in the
+        % roman *body* font so the document reads as one font. Works under pdflatex,
+        % lualatex, and xelatex. (The flextable table text is matched separately, via
+        % set_flextable_defaults() in the setup chunk.)
+        \renewcommand{\sfdefault}{\rmdefault}
         \raggedbottom            % avoid stretching content to fill pinned-figure gaps
+    include-before-body:
+      text: |
+        % Tighten the gap between the title block and the first line of text.
+        % Make this MORE negative to tighten further, less negative to loosen.
+        \vspace{-2\baselineskip}
 execute:
   echo: false
   warning: false
@@ -37,7 +48,7 @@ execute:
    them into  output_figs/_<rate_label>/ .  This document only EMBEDS them, so:
        1. tweak the model / rerun 10_results_assets.R  → assets refresh
        2. re-render this .qmd                          → document rebuilds
-   Your prose below is plain text in THIS file, so it is never overwritten.
+
 
  • ALL titles + captions live in one place: the `caps` list in the setup chunk.
    Edit them there (not in the figures — the images are intentionally text-free).
@@ -58,6 +69,14 @@ execute:
 
 library(readr); library(dplyr); library(tidyr)
 library(flextable); library(knitr)
+
+## Table font: match the document body font.
+## IMPORTANT: your PDF renders with lualatex, where flextable expands this into
+## \fontspec{...} — so it must be a REAL installed font name, not a generic alias
+## like "serif" (which fontspec cannot resolve and which breaks the build). With no
+## `mainfont` set in the YAML, the lualatex body font is Latin Modern Roman.
+## If you ever set a custom `mainfont`, change this string to match it.
+set_flextable_defaults(font.family = "Latin Modern Roman")
 
 rate_label <- params$rate_label
 OUT_DIR    <- file.path("output_figs", paste0("_", rate_label))
@@ -129,7 +148,13 @@ style_grouped_table <- function(df, groups, subs, footer_text = NULL) {
     ft <- fontsize(ft, size = 8.5, part = "footer")
     ft <- color(ft, color = "grey40", part = "footer")
   }
-  set_table_properties(autofit(ft), layout = "autofit", width = 1)
+  ## Give every value column the SAME width so the left/right model groups stay
+  ## symmetric. Without this, autofit lets a long footnote stretch one group's
+  ## columns much wider than the other's (this is what skewed Table 2). ------------
+  wv <- dim_pretty(ft)$widths
+  ft <- width(ft, j = 1,     width = wv[1])          # Scenario keeps its natural width
+  ft <- width(ft, j = vcols, width = max(wv[-1]))    # all value columns equal
+  set_table_properties(ft, layout = "autofit", width = 1)
 }
 
 ## build the two display tables from the raw CSVs -------------------------------
@@ -158,25 +183,26 @@ subs2   <- c("gap %", DP, "gap %", DP)
 ## ─────────────────────────────────────────────────────────────────────────────
 caps <- list(
   tbl_over_baseline =
-    "**Conservation value created over the do-nothing baseline, by scenario.**",
+    "**Value of acquisition policy over do-nothing baseline, by scenario.**",
   tbl_gap_vs_rolling =
-    "**Value-added gap vs. rolling (deterministic foresight), by scenario.**",
+    "**Value Added Gap: rolling vs. myopic/greedy, by scenario.**",
   fig_overtime = paste(
-    "**Prevented-loss shortfall vs. optimal.** Cumulative gap versus rolling",
-    "(discounted duck-pairs) accumulating over the horizon, by climate scenario.",
-    "Rolling is the deterministic-foresight benchmark (gap = 0)."),
+    "**Conservation shortfall: rolling \u2212 myopic/greedy.** Discounted duck-pairs",
+    "(cumulative to 2100) not conserved as compared to rolling, by climate scenario.",
+    "Rolling is the optimal benchmark (gap = 0); MIP gap ~0.01%."),
   fig_decline = paste(
-    "**Landscape decline under each climate future (rolling policy).** All scenarios",
-    "share the 2020 anchor (5.11M pairs). Policies are near-indistinguishable at",
-    "landscape scale (~0.6% of total) — the separation lives in value-added."),
+    "**Landscape decline under optimal acquisition schedule, by scenario.** All scenarios",
+    "share a common 2020 anchor [4.76m]. Decline is sharpest in dry scenarios."),
   fig_foresight = paste(
-    "**Rolling vs. myopic acquisition sets.** EAUs coloured by which policy buys them",
-    "under each climate scenario; foresight adds the blue cells and avoids the orange.",
-    "Cells are 282 km\u00b2 EAUs (ESRI:102039); grey = neither."),
+    "**Rolling vs. myopic acquisition sets.** EAUs colored by which policy buys them,",
+    "under each climate scenario. Purple cells are parcels acquired under both policies;",
+    "blue cells are purchased only under the rolling policies; orange cells are purchased",
+    "by the myopic policy but avoided by the rolling policy."),
   fig_prevloss = paste(
-    "**Per-parcel prevented-loss difference: rolling \u2212 myopic.** Blue: rolling invests",
-    "here and prevents duck-pair loss; red: myopic invests here instead; grey: no",
-    "difference. Coloured cells sum to the value-added gap. Colour is capped",
+    "**Per-parcel prevented-loss: rolling \u2212 myopic.** Blue: rolling invests",
+    "here and prevents duck-pair loss; red: myopic invests here instead, securing",
+    "absolute conservation benefit but relatively less than rolling. grey: no difference",
+    "Coloured cells sum to the value-added gap. Colour is capped",
     "symmetrically at the 98th percentile of |\u0394V|.")
 )
 ```
@@ -188,43 +214,105 @@ caps <- list(
      10_results_assets.R last refreshed the underlying numbers/figures.) -->
 ```
 
+# Project Overview
+This project asks whether accounting for non-stationarity leads to better land-acquisition decisions for waterfowl conservation in the U.S. Prairie Pothole Region (PPR) under different climate scenarios. It builds three decision models and compares their performance across climate-change
+scenarios and a stationary null.
+
+The three models acquire land period by period (decadal steps, 2020–2100) under a budget constraint:
+
+- **Greedy** — status-quo heuristic: rank parcels by current benefit-to-cost ratio, buy
+  down the list. No foresight.
+- **Myopic ILP** — re-optimizes each decade but freezes current benefit and hazard and
+  assumes they persist (a fabricated stationary future); implements the current decade,
+  then re-solves.
+- **Rolling-horizon ILP** — same structure, but uses the true projected trajectories. The
+  foresighted benchmark. Uses Gurobi solver (academic license). 
+
+The spatial unit is the **EAU** (Equal Area Unit, ~282 km²). After dropping 4 Wetland
+Management Districts, the analysis uses **841 EAUs across 20 WMDs**, over **9 decadal
+periods** and **5 scenarios** (RCP 4.5/8.5 × wet/dry, plus a stationary null).
+
+# Data Sources
+
+- **Benefit**: McKenna, Owen P., et al. "Conservation enhances resilience of the United States Duck Factory as environmental shifts may diminish landscape-scale waterfowl breeding capacity." BioScience (2026): biag091. 
+  - linear interpolation to get from obs/mid-century/end of century to decadal time steps. 
+  - projected over RCP 4.5/8.5 × wet/dry scenarios. 
+
+- **Cost**: Nolte, Christoph. "High-resolution land value maps reveal underestimation of conservation costs in the United States.". Proceedings of the National Academy of Sciences. 117.47 (2020): 29577-29583. 
+  - assume 2% unfiform annual increase
+  - note no emissions or precip scenarios. 
+ 
+
+- **Risk**: FOREsce (derived). Sohl, Terry L., et al. "Spatially explicit land-use and land-cover scenarios for the Great Plains of the United States." Agriculture, Ecosystems & Environment 153 (2012): 1-15.
+  - calculated as net suitable habitat loss per time step. 
+  - note this has RCP 4.5 & 8.5 scenarios, but no wet/dry. 
+  
+# Model Notes
+
+- **Acquisition value is calculated as expected loss prevented:**
+
+  `V[i,τ] = Σ_{t=τ}^{T} δ^t · b[i,t] · (1 − S[i,t])`.
+  
+  This is the value gained by removing conversion risk from parcel i starting at τ (i.e., value of acquiring a parcel). All unacquired parcels are treated as available at each re-solve; conversion risk does not remove parcels from the set, but instead enters **only** through the weighting in the objective. Acquisition removes this weight and counts full (discounted) value. This is justified because the **per-period** conversion probability is small, so few parcels actually convert out of availability within a decade — even though the *cumulative*, discounted loss-prevented value (value_added) is substantial enough for the policies to separate clearly.
+
+- **Budget**: set to a scalable amount based on a number of "median priced" EAUs per period. currently set to 5. 
+
+- **Discount Factor**: 0.95 annual 
+
+{{< pagebreak >}}
+
+
 # Results
 
-## Value created over the baseline
+## Acquisition value over baseline
 
-*\[Commentary — replace this text with your notes before Table 1.\]*
+This table compares the total benefit secured across the landscape (2020-2100) via three different acquisition policies (rolling, myopic, and greedy) with a "do-nothing" baseline scenario in which no parcels are acquired. All acquisition policies outperform the do-nothing baseline under climate change scenarios; there is no improvement over the do-nothing baseline under stationarity due to conversion risk set to near zero. 
+
+The rolling policy outperforms the myopic and greedy policies under all climate scenarios, consistent with our expectations that an acquisition policy with foresight should outperform a policy with no or limited foresight. The absolute improvement of any acquisition policy, however, is small: at best, the rolling policy secures improvement over baseline of less than 1%. I believe this is due to a low conversion risk: in the landscape as currently described, conversion risk is quite low (median = 0.0000361%), meaning the additional benefit secured through acquisitions (even the optimal/rolling model) is comparatively low. In addition, these results are from the n=5 budget scenario, in which the decision maker can only acquire 5 median-priced parcels per period (~45-65 parcels total), so only 7% of parcels are ever acquired. The value of any acquisition policy over baseline would presumably increase with a more generous budget. 
+
+```{=latex}
+\needspace{13\baselineskip}   % keep this whole table on one page (moves to next page if it won't fit)
+```
 
 ```{r}
 #| label: tbl-over-baseline
 #| tbl-cap: !expr caps$tbl_over_baseline
 style_grouped_table(
-  tbl1, groups1, subs1,
-  footer_text = paste0(
-    "% over baseline = value_added / J_baseline \u00d7 100 (improvement over the do-nothing ",
-    "landscape).  ", DP, " = value_added (discounted duck-pairs gained vs. baseline)."))
+  tbl1, groups1, subs1)
 ```
 
-*\[Commentary — replace this text with your notes after Table 1.\]*
 
-## Gap versus deterministic foresight
+## Gap: Foresight vs. Myopic/Greedy
 
-*\[Commentary — replace this text with your notes before Table 2.\]*
+This table compares the gap between total benefit secured across the landscape (2020-2100) in the greedy or myopic policy as compared to the rolling policy. The rolling policy is used as the provably near-optimal benchmark (MIP gap 0.01% across all rolling solves); this table presents the gap in cumulative duck pairs conserved under greedy/myopic policies as compared to that near-optimal benchmark. 
+
+As expected, the greedy policy displays a larger gap than the myopic policy under all climate scenarios. Myopic underperforms optimal by approx. %12-%14; greedy underperforms optimal at around ~42-45%. Under stationarity, there is virtually no difference (as we would expect). 
+
+This "value added gap" becomes our metric of greatest interest: because the absolute value of any acquisition policy in this landscape is relatively low, this metric helps demonstrate the value of foresight in acquisition policy. My interpretation: As compared to the best possible acquisition policy, how well does the greedy or myopic policy perform? How much conservation does a suboptimal acquisition policy leave on the table?
+
+```{=latex}
+\needspace{16\baselineskip}   % keep this whole table (incl. its footnote) on one page
+```
 
 ```{r}
 #| label: tbl-gap-vs-rolling
 #| tbl-cap: !expr caps$tbl_gap_vs_rolling
 style_grouped_table(
   tbl2, groups2, subs2,
-  footer_text = paste0(
-    "gap % = shortfall as % of rolling's value-added.  ", DP,
-    " = rolling value-added \u2212 model value-added (discounted duck-pairs)."))
+  footer_text = c(
+    "gap % = shortfall as % of rolling's value-added.",
+    paste0(DP, " = rolling value-added \u2212 model value-added (discounted duck-pairs).")))
 ```
 
-*\[Commentary — replace this text with your notes after Table 2.\]*
 
-## Shortfall accumulating over time
+## Value added gap over time
 
-*\[Commentary — replace this text with your notes before Figure 1.\]*
+This graph shows how the gap between the rolling policy and the myopic/greedy policies grows over time. This is presented as net changes in duck pairs, using the rolling policy as a benchmark (value added gap for rolling = 0). As expected, the cumulative gap in performance between rolling and greedy/myopic grows over time (positive values only); and greedy is substantially worse than myopic (red always > yellow). 
+
+One counter-intuitive observation: the performance between different acquisition policies looks to be more important under wet scenarios than under dry. More ducks are "failed to be conserved" under wet scenarios than under dry; I would have thought the opposite (dry scenarios drive more decline in ducks, so shouldn’t an optimal acquisition schedule produce a larger gap under dry scenarios?).
+
+[I think this might be driven by the fact that land use conversion is the same across wet/dry scenarios (see Q4 below.). And/or: is this just because there are more ducks overall in wet scenarios? if we displayed shortfall as a % of the total duck population, would we see the difference?]
+
 
 ```{r}
 #| label: fig-overtime
@@ -233,11 +321,12 @@ style_grouped_table(
 knitr::include_graphics(file.path(OUT_DIR, "overtime_gap.png"))
 ```
 
-*\[Commentary — replace this text with your notes after Figure 1.\]*
+{{< pagebreak >}}
+
 
 ## Landscape decline
 
-*\[Commentary — replace this text with your notes before Figure 2.\]*
+Here we show the rolling policy under stationarity and 4 climate scenarios, over time. Under all climate scenarios, landscape totals decline; dry scenarios fare worse than wet, whereas emissions scenario is less of a determining driver.  
 
 ```{r}
 #| label: fig-decline
@@ -246,11 +335,12 @@ knitr::include_graphics(file.path(OUT_DIR, "overtime_gap.png"))
 knitr::include_graphics(file.path(OUT_DIR, "decline.png"))
 ```
 
-*\[Commentary — replace this text with your notes after Figure 2.\]*
+{{< pagebreak >}}
 
-## Where foresight changes the target set
 
-*\[Commentary — replace this text with your notes before Figure 3.\]*
+## Acquisitions by policy: rolling vs myopic
+
+This map shows parcels that are acquired under both rolling and myopic acquisition schedules; those that are acquired only under rolling; and those that are acquired only under myopic. Light blue parcels are those that are purchased only under an optimal acquisition policy; the myopic model skips these parcels. The orange parcels are ones that the myopic policy purchased but the rolling policy declined to purchase. Interpretation here is that light blue parcels are where the rolling policy's advantage comes from; orange is where the myopic dedicated funds sub-optimally. 
 
 ```{r}
 #| label: fig-foresight
@@ -269,11 +359,15 @@ cat("*(Maps not generated — the spatial schedule was absent when",
     "asset script, then re-render.)*")
 ```
 
-*\[Commentary — replace this text with your notes after Figure 3.\]*
+{{< pagebreak >}}
 
-## Per-parcel prevented-loss difference
+## Value added gap by policy: rolling vs myopic
 
-*\[Commentary — replace this text with your notes before Figure 4.\]*
+This map shows how rolling and myopic acquisition schedules differ in where and how they prevent duck loss. Cells are highlighted where myopic and rolling schedules differ in acquisition decisions. Blue cells show where the rolling acquisition schedule acquired parcels but myopic did not; this represents addition ducks secured through foresight. Red cells show where the myopic schedule acquired parcels that the rolling schedule ignored; this represents a sub-optimal allocation of budget. 
+
+Darker shades of blue are parcels with higher duck density. Darker shades of red indicate parcels where the difference between realized and potential loss is greater.  
+
+Take away: this map show the spatial distribution of how the two models allocated their identical budget differently. The rolling model invested in parcels that maximized benefit by 2100; the myopic invested in parcels that secured real duck pairs (no loss, only gain), but underperformed the rolling benchmark. 
 
 ```{r}
 #| label: fig-prevloss
@@ -282,8 +376,6 @@ cat("*(Maps not generated — the spatial schedule was absent when",
 #| eval: !expr maps_ok
 knitr::include_graphics(file.path(OUT_DIR, "prevented_loss_diff.png"))
 ```
-
-*\[Commentary — replace this text with your notes after Figure 4.\]*
 
 {{< pagebreak >}}
 
@@ -297,11 +389,35 @@ knitr::include_graphics(file.path(OUT_DIR, "prevented_loss_diff.png"))
 
 ## Temporal alignment of benefit data
 
-*\[Commentary — replace this text with your notes before this table.\]*
+After the initial model run, I realized there was a problem with the temporal alignment of the benefit data with the landcover data (and the decision model itself). The benefit data is as follows:
+
+- "Obs" = mean 2007–2017 
+- "3059" = mean 2030–2059
+- "7099" = mean 2070–2099
+
+Originally, I had aligned it as follows:
+
+- "Obs" = mean 2007–2017 -> 2020
+- "3059" = mean 2030–2059 -> 2050 
+- "7099" = mean 2070–2099 -> 2100
+
+After talking with Owen, I updated the alignment to use window midpoints :
+
+- "Obs" = mean 2007–2017 -> 2012
+- "3059" = mean 2030–2059 -> 2045 
+- "7099" = mean 2070–2099 -> 285
+
+Notes: The 2020 baseline is produced by interpolating each RCP×GCM combo on its 2012→2045 segment and then averaging across the four combos into one shared period-0 row (preserves the shared-baseline used for the 2020 risk). Decades 2030/2040 interpolate on the 2012→2045 segment; 2050–2080 on the 2045→2085 segment; 2090 and 2100 are held constant at the 2085 value
+
+I re-ran the model with this midpoint temporal alignment of benefit data; saw little difference in model results. My takeaway is that we can reasonably use this midpoint alignment, and importantly that it doesn’t much matter for model results. 
+
+```{=latex}
+\needspace{13\baselineskip}   % keep this whole table on one page
+```
 
 ```{r}
 #| label: tbl-align-midpoint
-#| tbl-cap: "**Temporal alignment of benefit data: midpoint comparison.** One-time entry, transcribed from an external source; not produced by 10_results_assets.R."
+#| tbl-cap: "**Temporal alignment of benefit data: midpoint comparison.**"
 align_mid <- data.frame(
   Scenario = c("RCP 4.5 wet", "RCP 4.5 dry", "RCP 8.5 wet", "RCP 8.5 dry", "Stationary"),
   g_pct = c("+0.02%", "0.00%",  "-0.01%", "+0.01%", "\u2248 0"),
@@ -318,18 +434,17 @@ subs_mid   <- c(paste0(DELTA, " % over baseline"), DP,
                 paste0(DELTA, " % over baseline"), paste0(DELTA, " ", DP))
 style_grouped_table(align_mid, groups_mid, subs_mid,
   footer_text = paste0("\u0394 = change vs. the primary benefit alignment (midpoint",
-                       " comparison). One-time entry \u2014 edit the source note as needed."))
+                       " comparison)."))
 ```
 
-*\[Commentary — replace this text with your notes after this table.\]*
 
-## Temporal alignment: gap vs. rolling
-
-*\[Commentary — replace this text with your notes before this table.\]*
+```{=latex}
+\needspace{12\baselineskip}   % keep this whole table on one page
+```
 
 ```{r}
 #| label: tbl-align-gap
-#| tbl-cap: "**Temporal alignment of benefit data: gap vs. rolling (midpoint comparison).** One-time entry, transcribed from an external source; not produced by 10_results_assets.R."
+#| tbl-cap: "**Temporal alignment of benefit data: gap vs. rolling (midpoint comparison).**"
 align_gap <- data.frame(
   Scenario = c("RCP 4.5 wet", "RCP 4.5 dry", "RCP 8.5 wet", "RCP 8.5 dry", "Stationary"),
   g_gap = c("-1.00%", "-0.62%", "+0.13%", "-0.44%", "-0.56%"),
@@ -343,7 +458,40 @@ subs_gap   <- c(paste0(DELTA, " gap %"), paste0(DELTA, " ", DP),
                 paste0(DELTA, " gap %"), paste0(DELTA, " ", DP))
 style_grouped_table(align_gap, groups_gap, subs_gap,
   footer_text = paste0("\u0394 = change vs. the primary benefit alignment (midpoint",
-                       " comparison). One-time entry \u2014 edit the source note as needed."))
+                       " comparison)."))
 ```
 
-*\[Commentary — replace this text with your notes after this table.\]*
+{{< pagebreak >}}
+
+# Conversion Risk
+
+## Uniform, Literature-derived
+- Doherty et al 2018:  
+  - 0.57% per year wetland loss in the Prairie Coteau ecoregion in Minnesota 
+  - 1.33% of grasslands were lost per year during 1979–1997 across the entire United States Prairie Pothole Region 
+
+- Rashford et al 2011:  
+  - 1.33% of grasslands were lost (converted to cultivated crops) per year during 1979–1997 across the entire United States Prairie Pothole Region 
+
+- Oslund et al 2011: 
+  - Wetland change in MN from 1980-2007: 4.3% loss in total wetland area across MN PPR.  
+  - Kemnick et al 2023: Wetland drainage rates: upper & lower bound (0.57% and 0.09%/year); from Dahl, 2014; Oslund et al., 2010 
+  
+Compare this to current net habitat proxy rates:
+  - mean: 0.47%
+  - median: .0000361%
+  - max: 12%
+
+Expectation: a uniform conversion risk estimate will flatten out regional differences, and close the gap between myopic and rolling (it essentially confirms myopic assumption of stationarity).
+
+Potential path forward: take an approach similar to Kemnick et al 2023: use literature-derived estimates as a landscape total, and use landscape characteristics (i.e., wetland size, surrounding cropland) as a way to rank relatively.
+
+Kemink, Kaylan M., et al. "Quantifying population-level conservation impacts for a perpetual conservation program on private land." Journal of Environmental Management 345 (2023): 118748.
+
+{{< pagebreak >}}
+
+
+# Wet/dry scenarios for land use
+The FOREsce model used to provide landcover classification is the FOREsce GCAM reference scenario. It is provided in RCP 4.5, 8.5, and mean climate scenarios- but there is no wet/dry distinction. For the time being, I have just kept land cover constant across wet/dry scenarios while preserving the 4.5/8.5 distinction. What this means is that only abundance varies across wet/dry scenarios- proportional allocation of ducks within WMDs does not, nor does conversion risk. This isn’t ideal, but I thought it could be a limitation we could live with- but I think it may come out when looking at duck loss prevented by scenario.  I’m not fully sure how to address or whether it’s worth pursuing an alternate data source. 
+
+ 
