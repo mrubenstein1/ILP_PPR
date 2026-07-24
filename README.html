@@ -10,7 +10,7 @@
 
 
 
-<meta name="date" content="2026-06-26" />
+<meta name="date" content="2026-07-24" />
 
 <title>PPR Land Acquisition Under Climate Non-Stationarity</title>
 
@@ -351,7 +351,7 @@ display: none;
 
 <h1 class="title toc-ignore">PPR Land Acquisition Under Climate
 Non-Stationarity</h1>
-<h4 class="date">2026-06-26</h4>
+<h4 class="date">July 24, 2026</h4>
 
 </div>
 
@@ -390,7 +390,7 @@ active (academic) license</p>
 <code>input_data/data_panel.rds</code>.</li>
 <li><code>09__validation.R</code> — run first, with Gurobi active, to
 certify the formulation (P1–P5). Does <em>not</em> need to be re-run
-<code>08</code> is run</li>
+every time <code>08</code> is run</li>
 <li><code>08__run_models.R</code> — runs all three models on all five
 scenarios and writes results to <code>output_data/</code>. Includes a
 per-parcel acquisition schedule (with EAU coordinates) to facilitate
@@ -546,7 +546,10 @@ survival/value/budget functions, the Gurobi solver wrapper, the three
 policies, and evaluation. Solver settings (a 60 s per-solve time cap,
 threads, seed, output) and the <strong>spend-down</strong> block
 (<code>SPEND_DOWN_MODE</code>, the value-first/full-budget-deployment
-tiebreak) live in parameter blocks near the top.</li>
+tiebreak) live in parameter blocks near the top.
+<ul>
+<li>temporal discount rate and budget constraint lives here</li>
+</ul></li>
 <li><strong><code>08__run_models</code></strong> — driver: runs the
 three models on all scenarios, scores each against its true future, and
 writes results, trajectories, a convergence summary, and the
@@ -554,7 +557,10 @@ writes results, trajectories, a convergence summary, and the
 coordinates</strong> (<code>acquisition_schedule_spatial.csv</code>,
 also embedded in <code>model_results.rds</code>). The schedule join
 reads <code>input_data/eau_wmd_lookup.rds</code>; if absent it warns and
-writes the schedule without coordinates rather than failing.</li>
+writes the schedule without coordinates rather than failing.
+<ul>
+<li>option to run model as “reproducible” or not lives here.</li>
+</ul></li>
 <li><strong><code>09__validation</code></strong> — correctness suite
 (P1–P5) plus a documented stub for the deferred MDP comparison.
 Formulation tests run with spend-down off; the ordering test runs in the
@@ -562,7 +568,7 @@ active mode.</li>
 </ol>
 <p><strong>Reporting / mapping:</strong></p>
 <ol start="10" style="list-style-type: decimal">
-<li><strong><code>10_results_figs</code></strong> — single pure-reader
+<li><strong><code>10_results_assets</code></strong> — single pure-reader
 reporting script: builds two results tables
 <ul>
 <li>six figures (<code>ggplot2</code>/<code>flextable</code>)
@@ -575,6 +581,10 @@ outline overlay (auto-skipped if absent), so a user without the spatial
 stack still gets tables + figures. Toggle maps with
 <code>DRAW_MAPS</code>.</li>
 </ul></li>
+<li><strong><code>11_results.qmd</code></strong> reports results from
+<code>10_results_assets</code>, with annotation/prose accompanying each
+figure/graph/map. Allows for regular and flexible updating of results as
+the project evolves.</li>
 </ol>
 </div>
 <div id="references-and-sources" class="section level2">
