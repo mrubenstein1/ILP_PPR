@@ -1,7 +1,7 @@
 ---
 title: "PPR Land Acquisition Under Climate Non-Stationarity"
 output: html_document
-date: "2026-06-26"
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
 ---
 
 ```{r setup, include=FALSE}
@@ -10,9 +10,9 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ## Overview
 
-This project asks whether **accounting for projected future ecological conditions
-(non-stationarity) leads to better land-acquisition decisions for waterfowl conservation
-in the U.S. Prairie Pothole Region (PPR) than assuming present conditions persist.** It
+This project asks whether accounting for projected future ecological conditions
+(non-stationarity) leads to improved land-acquisition decisions for waterfowl conservation
+in the U.S. Prairie Pothole Region (PPR) than assuming stationarity. It
 builds three decision models and compares their performance across climate-change
 scenarios and a stationary null.
 
@@ -38,16 +38,11 @@ Requires R with the native **Gurobi** R package and an active (academic) license
 1. Data pipeline (scripts `01`–`06`) — produces
    `input_data/data_panel.rds`.
 2. `09__validation.R` — run first, with Gurobi active, to certify the formulation (P1–P5).
-   Does *not* need to be re-run every time `08` is run
+   Does *not* need to be re-run every time `08` is run.
 3. `08__run_models.R` — runs all three models on all five scenarios and writes results to
    `output_data/`. Includes a per-parcel acquisition schedule (with EAU
-   coordinates) to facilitate production of maps. Run single-thread + seeded
-   (`REPRODUCIBLE <- TRUE`) for bit-reproducible reported numbers *and* a stable map
-   footprint. Budget deployment is controlled by `SPEND_DOWN_MODE` near the top of `07`
-   (default `"spend"` forces the model to exhaust the budget each time period).
-4. `10_results_figs.R` — reads `08`'s outputs; builds the two results tables, six
-   figures, and three maps (`ggplot2`/`flextable`; `terra`/`sf` only for the optional WMD
-   outline overlay) into `output_figs/`. Set `DRAW_MAPS <- FALSE` for tables+figures only.
+   coordinates) to facilitate production of maps.
+4. `10_results_assets.R` — reads `08`'s outputs; builds the two results tables, 2 figures, and three maps   (`ggplot2`/`flextable`; `terra`/`sf` only for the optional WMD. outline overlay) into `output_figs/`.  
 
 Outputs: `output_data/model_results.{rds,csv}`, `model_trajectories.csv`,
 `acquisition_schedule_spatial.csv` (the per-parcel schedule, EAU-keyed with coordinates),
@@ -96,14 +91,19 @@ and `solver_convergence.csv` (a per-run record of how often the per-solve time c
    evaluation. Solver settings (a 60 s per-solve time cap, threads, seed, output) and the
    **spend-down** block (`SPEND_DOWN_MODE`, the value-first/full-budget-deployment tiebreak)
    live in parameter blocks near the top.
-    - temporal discount rate and budget constraint lives here
+    - Temporal discount rate lives here: defined as 0.95
+    - Budget parameter lives here: budget sensitivity (strict or generous budget setting) can be changed     at the top
+    - Spend down mode lives here: Budget deployment is controlled by `SPEND_DOWN_MODE` 
+   (default `"spend"` forces the model to exhaust the budget each time period).
 8. **`08__run_models`** — driver: runs the three models on all scenarios, scores each
    against its true future, and writes results, trajectories, a convergence summary, and the
    **per-parcel acquisition schedule joined to EAU coordinates**
    (`acquisition_schedule_spatial.csv`, also embedded in `model_results.rds`). The schedule
    join reads `input_data/eau_wmd_lookup.rds`; if absent it warns and writes the schedule
    without coordinates rather than failing.
-    - option to run model as "reproducible" or not lives here. 
+    - option to run model as "reproducible" lives here. Run single-thread + seeded
+   (`REPRODUCIBLE <- TRUE`) for bit-reproducible reported numbers *and* a stable map
+   footprint. 
 9. **`09__validation`** — correctness suite (P1–P5) plus a documented stub for the deferred
    MDP comparison. Formulation tests run with spend-down off; the ordering test runs in the
    active mode.
