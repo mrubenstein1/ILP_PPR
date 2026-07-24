@@ -38,7 +38,7 @@ Requires R with the native **Gurobi** R package and an active (academic) license
 1. Data pipeline (scripts `01`–`06`) — produces
    `input_data/data_panel.rds`.
 2. `09__validation.R` — run first, with Gurobi active, to certify the formulation (P1–P5).
-   Does *not* need to be re-run  `08` is run
+   Does *not* need to be re-run every time `08` is run
 3. `08__run_models.R` — runs all three models on all five scenarios and writes results to
    `output_data/`. Includes a per-parcel acquisition schedule (with EAU
    coordinates) to facilitate production of maps. Run single-thread + seeded
@@ -96,24 +96,28 @@ and `solver_convergence.csv` (a per-run record of how often the per-solve time c
    evaluation. Solver settings (a 60 s per-solve time cap, threads, seed, output) and the
    **spend-down** block (`SPEND_DOWN_MODE`, the value-first/full-budget-deployment tiebreak)
    live in parameter blocks near the top.
+    - temporal discount rate and budget constraint lives here
 8. **`08__run_models`** — driver: runs the three models on all scenarios, scores each
    against its true future, and writes results, trajectories, a convergence summary, and the
    **per-parcel acquisition schedule joined to EAU coordinates**
    (`acquisition_schedule_spatial.csv`, also embedded in `model_results.rds`). The schedule
    join reads `input_data/eau_wmd_lookup.rds`; if absent it warns and writes the schedule
    without coordinates rather than failing.
+    - option to run model as "reproducible" or not lives here. 
 9. **`09__validation`** — correctness suite (P1–P5) plus a documented stub for the deferred
    MDP comparison. Formulation tests run with spend-down off; the ordering test runs in the
    active mode.
 
 **Reporting / mapping:**
 
-10. **`10_results_figs`** — single pure-reader reporting script: builds two results tables
+10. **`10_results_assets`** — single pure-reader reporting script: builds two results tables
     + six figures (`ggplot2`/`flextable`) **and** three acquisition maps (footprint by
     decade; rolling-vs-myopic foresight difference; wet-vs-dry) from `08`'s saved CSVs into
     `output_figs/`. No solver/`07` needed. The maps need only `ggplot2`; `terra`/`sf` are
     used solely for the optional WMD outline overlay (auto-skipped if absent), so a user
     without the spatial stack still gets tables + figures. Toggle maps with `DRAW_MAPS`.
+
+11. **`11_results.qmd`** reports results from `10_results_assets`, with annotation/prose accompanying each figure/graph/map. Allows for regular and flexible updating of results as the project evolves. 
 
 
 ## References and sources

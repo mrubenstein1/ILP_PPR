@@ -64,6 +64,35 @@ DELTA <- 0.95
 # sensitivity range 2-10.
 BUDGET_EAUS_PER_PERIOD <- 5
 
+
+# ── Budget deployment (spend-down) ────────────────────────────────────────────
+# Real managers deploy the whole per-period budget (it cannot be rolled over) and
+# do not leave money idle merely because the next parcel looks low-value under their
+# current belief. Each ILP solve therefore optimises acquisition value FIRST and then,
+# as a STRICTLY LOWER-PRIORITY tiebreak among value-co-optimal plans, deploys the
+# IMPLEMENTED period's budget as fully as possible. This removes a MIPGap-sensitive
+# artefact — myopic leaving ~22% of its budget unspent because its frozen belief
+# assigns the marginal parcels near-zero value, so the solver is indifferent to them —
+# and replaces it with an explicit, defensible behavioural rule.
+  #   "off"   — no requirement to spend
+  #   "spend" — secondary tiebreak maximises DOLLARS deployed in the implemented period
+
+SPEND_DOWN_MODE   <- "spend"   # "off" | "spend"
+
+# Max fraction of the primary (value) objective the spend tiebreak may sacrifice.
+# Kept tiny so the value-optimal core is PINNED and only genuinely marginal parcels
+# (value within this tolerance of the optimum) are added to fill the budget. With the
+# core pinned, the tiebreak is pure ADDITION of non-negative-value parcels in the
+# implemented period, so realised (true) J can only weakly improve — see header note.
+SPEND_DOWN_RELTOL <- 1e-4
+
+
+
+
+
+
+# ══ Scenarios & Decision Years ══════════════════════════════####
+
 # Decision periods: 2020 (baseline) stitched onto the decadal trajectory 2030-2100.
 DECISION_YEARS <- seq(2020, 2100, by = 10)   # length 9; index t = (year-2020)/10
 
@@ -78,52 +107,29 @@ SCENARIOS <- list(
   stationary = c(rcp = "stationary", gcm = "stationary")
 )
 
+
+
+
 # ── Solver control ────────────────────────────────────────────────────────────
 # The myopic frozen-belief solves reach a near-optimal incumbent within seconds,
 # then spend the remaining time only CERTIFYING optimality against the LP bound
 # across a large band of co-valued schedules (a benign symmetry of the flattened
 # frozen objective). Because each policy implements only the current period and
 # re-optimises, certifying the discarded tail of the schedule does not change the
-# enacted trajectory. We therefore cap each solve's runtime. Empirically (diagnostic
-# run, script 14) only 1-2 of the 9 per-period climate solves reach a 60s cap, each
+# enacted trajectory. We therefore cap each solve's runtime. 
+
+#Empirically (diagnostic run, script 14) only 1-2 of the 9 per-period climate solves reach a 60s cap, each
 # at <=0.05% optimality gap; the resulting realised value_added is within <0.5% of
-# the converged value, far below the ~13% rolling-vs-myopic effect. Truncation only
-# ever biases the myopic incumbent slightly DOWN, so it cannot manufacture a
-# rolling advantage — the comparison is conservative under the cap.
+# the converged value, far below the ~13% rolling-vs-myopic effect. 
+  #Truncation only ever biases the myopic incumbent slightly DOWN, so it cannot manufacture a 
+  # rolling advantage — the comparison is conservative under the cap.
 SOLVER_TIME_LIMIT <- 60      # seconds per solve (cap on the optimality-proof phase)
 SOLVER_MIP_GAP    <- 1e-4    # Gurobi default; the time cap usually binds first
 SOLVER_THREADS    <- 0L      # 0 = all cores (fast). Set 1L for bit-reproducible runs.
 SOLVER_SEED       <- 1L      # affects only solver tie-breaking
 SOLVER_OUTPUT     <- 0L      # 0 = quiet; 1 = full Gurobi search log
 
-# ── Budget deployment (spend-down) ────────────────────────────────────────────
-# Real managers deploy the whole per-period budget (it cannot be rolled over) and
-# do not leave money idle merely because the next parcel looks low-value under their
-# current belief. Each ILP solve therefore optimises acquisition value FIRST and then,
-# as a STRICTLY LOWER-PRIORITY tiebreak among value-co-optimal plans, deploys the
-# IMPLEMENTED period's budget as fully as possible. This removes a MIPGap-sensitive
-# artefact — myopic leaving ~22% of its budget unspent because its frozen belief
-# assigns the marginal parcels near-zero value, so the solver is indifferent to them —
-# and replaces it with an explicit, defensible behavioural rule.
-#
-#   "off"   — value only. Reproduces the pre-spend-down numbers; used for clean
-#             formulation validation (P1/P2/P5 in 09).
-#   "spend" — secondary tiebreak maximises DOLLARS deployed in the implemented period
-#             ("don't leave money on the table").
-#   "count" — secondary tiebreak maximises NUMBER of parcels acquired (cheaper-leaning;
-#             "more lottery tickets" on currently-low parcels that may rise in value).
-#
-# Greedy already deploys its budget by construction (it buys down its ranked list until
-# nothing affordable remains), so this knob affects only the ILP policies — materially
-# for myopic, negligibly for rolling (which already nearly exhausts the budget).
-SPEND_DOWN_MODE   <- "spend"   # "off" | "spend" | "count"
 
-# Max fraction of the primary (value) objective the spend tiebreak may sacrifice.
-# Kept tiny so the value-optimal core is PINNED and only genuinely marginal parcels
-# (value within this tolerance of the optimum) are added to fill the budget. With the
-# core pinned, the tiebreak is pure ADDITION of non-negative-value parcels in the
-# implemented period, so realised (true) J can only weakly improve — see header note.
-SPEND_DOWN_RELTOL <- 1e-4
 # ══════════════════════════════════════════════════════════════════════════════
 
 
@@ -326,10 +332,8 @@ solve_acquisition_ilp <- function(V_mat, cost_mat, budget, avail, periods,
     sec <- numeric(nvar)
     if (identical(spend_down, "spend")) {
       sec[in_impl] <- costs_s[in_impl]   # maximise dollars deployed (scaled units)
-    } else if (identical(spend_down, "count")) {
-      sec[in_impl] <- 1                  # maximise number of parcels acquired
     } else {
-      stop("spend_down must be one of 'off', 'spend', 'count'.")
+      stop("spend_down must be one of 'off', 'spend'.")
     }
     model$multiobj <- list(
       list(objn = obj, priority = 2L, weight = 1, reltol = SPEND_DOWN_RELTOL, abstol = 0),

@@ -4,28 +4,23 @@
 #
 # Sources the core engine, then for every scenario builds the (benefit, hazard,
 # cost) matrices, runs all three policies, and scores each against that scenario's
-# TRUE future. Saves a tidy results table, per-period landscape trajectories, AND
+# TRUE future. 
+
+#Saves a tidy results table, per-period landscape trajectories, AND
 # the per-parcel acquisition schedule (joined to EAU coordinates, with a per-parcel
 # `prevented_loss` = TRUE-future discounted value_added contribution) so downstream
-# reporting/mapping never has to re-solve. The schedule is written both as
-# output_data/acquisition_schedule_spatial.csv and embedded in model_results.rds.
-# NOTE: the saved schedule reflects the mode this run used — set REPRODUCIBLE <- TRUE
-# (single-thread, seeded) for a stable, re-runnable schedule before making maps.
-#
+# reporting/mapping never has to re-solve. 
+
+#The schedule is written both as output_data/acquisition_schedule_spatial.csv and 
+#embedded in model_results.rds.
+
 # RUN 09__validation.R FIRST (with Gurobi active) to confirm the formulation passes
-# its correctness checks on your machine. The model logic here was validated in a
-# separate solver harness; this script implements that verified logic in R/Gurobi.
-#
+# its correctness checks.
+
 # ── TWO COMPLEMENTARY OUTCOME METRICS ─────────────────────────────────────────
-# Because we acquire only a tiny fraction of 841 EAUs, the do-nothing landscape
-# total J_baseline dominates J, so gaps measured on the TOTAL J look small. The
-# quantity a manager actually controls is the conservation value created by
-# acquisition,
-#       value_added = J - J_baseline = sum_i V[i, tau_i].
-# We report gaps on BOTH: total J (the true landscape outcome, the headline) and
-# value_added (where model choice actually shows up). Under the current low-
-# conversion data both gaps are modest and grow with conversion magnitude; the
-# value_added view makes the model ordering visible where the total-J view masks it.
+
+# This script reports gaps on both total J (the true landscape outcome) and
+# value_added (difference between welfare achieved under do-nothing baseline). 
 # ══════════════════════════════════════════════════════════════════════════════
 
 source("07. ilp_core.R")
@@ -35,8 +30,8 @@ source("07. ilp_core.R")
 # (parallel workers may return different members of a co-optimal tie). For the
 # numbers that go into the thesis, run deterministically (single-thread, fixed seed)
 # so the figures are exactly reproducible. Set FALSE for a faster, multi-threaded
-# pass (results then carry ~0.3%-scale run-to-run wobble — fine for exploration,
-# and far below the ~13% effect, but pin this TRUE for anything you report).
+# pass (results then carry ~0.3%-scale run-to-run wobble — fine for exploration)
+
 REPRODUCIBLE <- TRUE
 if (REPRODUCIBLE) SOLVER_THREADS <- 1L
 
