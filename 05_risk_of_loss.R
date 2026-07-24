@@ -186,41 +186,6 @@ if (!is.null(epsilon_override)) {
               epsilon_override))
 }
 
-# Diagnostic plot: raw distribution with epsilon marked
-library(ggplot2)
-library(scales)
-
-theme_thesis <- theme_bw(base_size = 12) +
-  theme(strip.background = element_rect(fill = "grey92", color = NA),
-        panel.grid.minor = element_blank(),
-        legend.position  = "bottom")
-
-rcp_colors <- c("45" = "#2171b5", "85" = "#cb181d")
-
-p_diag <- raw_all %>%
-  mutate(rcp_label = ifelse(rcp == "45", "RCP 4.5", "RCP 8.5")) %>%
-  ggplot(aes(x = pmax(-0.1, trans_raw), fill = rcp)) +  # truncate extreme negatives
-  geom_histogram(binwidth = 0.01, boundary = 0, color = "white", linewidth = 0.2) +
-  geom_vline(xintercept = epsilon, color = "black", linetype = "dashed", linewidth = 0.8) +
-  annotate("text", x = epsilon + 0.003, y = Inf, vjust = 1.5,
-           label = sprintf("epsilon = %.2e", epsilon), size = 3.2, hjust = 0) +
-  scale_fill_manual(values = rcp_colors, guide = "none") +
-  scale_x_continuous(labels = percent_format(accuracy = 0.1)) +
-  facet_grid(rcp_label ~ year, scales = "free_y") +
-  labs(
-    title    = "Raw Transition Probability Distribution by RCP and Decade",
-    subtitle = "Dashed line = data-derived epsilon (1/10 of smallest positive loss). Values left of 0 = habitat recovery.",
-    x        = "Raw Transition Probability",
-    y        = "Count of EAUs"
-  ) +
-  theme_thesis
-
-print(p_diag)
-
-cat("\n  Review the plot and console output above to verify epsilon is sensible.\n")
-cat("  To override, set epsilon_override at the top of this script and re-run.\n")
-cat("=======================================================\n\n")
-
 
 # ── 7. Apply epsilon floor and assemble final trans_prob table ────────────────
 

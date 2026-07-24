@@ -42,7 +42,7 @@ Requires R with the native **Gurobi** R package and an active (academic) license
 3. `08__run_models.R` — runs all three models on all five scenarios and writes results to
    `output_data/`. Includes a per-parcel acquisition schedule (with EAU
    coordinates) to facilitate production of maps.
-4. `10_results_assets.R` — reads `08`'s outputs; builds the two results tables, 2 figures, and three maps   (`ggplot2`/`flextable`; `terra`/`sf` only for the optional WMD. outline overlay) into `output_figs/`.  
+4. `10_results_assets.R` — reads `08`'s outputs; builds the 2 tables, 2 figures, 2 maps   (`ggplot2`/`flextable`; `terra`/`sf` only for the optional WMD. outline overlay) into `output_figs/`.  
 
 Outputs: `output_data/model_results.{rds,csv}`, `model_trajectories.csv`,
 `acquisition_schedule_spatial.csv` (the per-parcel schedule, EAU-keyed with coordinates),
@@ -52,17 +52,17 @@ and `solver_convergence.csv` (a per-run record of how often the per-solve time c
 
 **Data pipeline:**
 
-1. **`01__create_EAUs`** — grids the WMD shapefile into EAUs; builds an EAU↔WMD lookup.
-2. **`02__EAU_prop_suitable`** — proportion of suitable habitat per EAU from USGS FOREsce
+1. **`01_create_EAUs`** — grids the WMD shapefile into EAUs; builds an EAU↔WMD lookup.
+2. **`02_EAU_prop_suitable`** — proportion of suitable habitat per EAU from USGS FOREsce
    land-cover projections, over time and by RCP. (Full resampling run ~6–10 min.)
-3. **`03__create_data_panel`** — assembles the long-format data panel (EAU × year × RCP ×
+3. **`03_create_data_panel`** — assembles the long-format data panel (EAU × year × RCP ×
    GCM), including wet/dry duplication and the stationary scenario.
-4. **`04__benefit_data`** — waterfowl-abundance benefit, interpolated to decadal steps and
+4. **`04_benefit_data`** — waterfowl-abundance benefit, interpolated to decadal steps and
    distributed within WMDs by suitable habitat. **Drops the 4 excluded WMDs** (→ 841 EAUs).
-5. **`05__risk_of_loss`** — conversion-risk hazard (`trans_prob`), a net-loss/erosion
+5. **`05_risk_of_loss`** — conversion-risk hazard (`trans_prob`), a net-loss/erosion
    proxy with a small background floor ε. Provisional; isolated to this one column so the
    metric can be swapped without touching model code.
-6. **`06__cost_data`** — acquisition cost per EAU (Nolte 2020 FMV; 2%/yr inflation).
+6. **`06_cost_data`** — acquisition cost per EAU (Nolte 2020 FMV; 2%/yr inflation).
 
 **Data Panel Produced via Data Pipeline:**
 ## Variables
@@ -86,7 +86,7 @@ and `solver_convergence.csv` (a per-run record of how often the per-solve time c
 
 **Modeling core:**
 
-7. **`07__ilp_core`** — shared engine sourced by `08` and `09`: scenario-matrix assembly,
+7. **`07_ilp_core`** — shared engine sourced by `08` and `09`: scenario-matrix assembly,
    survival/value/budget functions, the Gurobi solver wrapper, the three policies, and
    evaluation. Solver settings (a 60 s per-solve time cap, threads, seed, output) and the
    **spend-down** block (`SPEND_DOWN_MODE`, the value-first/full-budget-deployment tiebreak)
@@ -95,7 +95,7 @@ and `solver_convergence.csv` (a per-run record of how often the per-solve time c
     - Budget parameter lives here: budget sensitivity (strict or generous budget setting) can be changed     at the top
     - Spend down mode lives here: Budget deployment is controlled by `SPEND_DOWN_MODE` 
    (default `"spend"` forces the model to exhaust the budget each time period).
-8. **`08__run_models`** — driver: runs the three models on all scenarios, scores each
+8. **`08_run_models`** — driver: runs the three models on all scenarios, scores each
    against its true future, and writes results, trajectories, a convergence summary, and the
    **per-parcel acquisition schedule joined to EAU coordinates**
    (`acquisition_schedule_spatial.csv`, also embedded in `model_results.rds`). The schedule
@@ -104,7 +104,7 @@ and `solver_convergence.csv` (a per-run record of how often the per-solve time c
     - option to run model as "reproducible" lives here. Run single-thread + seeded
    (`REPRODUCIBLE <- TRUE`) for bit-reproducible reported numbers *and* a stable map
    footprint. 
-9. **`09__validation`** — correctness suite (P1–P5) plus a documented stub for the deferred
+9. **`09_validation`** — correctness suite (P1–P5) plus a documented stub for the deferred
    MDP comparison. Formulation tests run with spend-down off; the ordering test runs in the
    active mode.
 
