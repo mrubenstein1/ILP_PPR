@@ -1,0 +1,4 @@
+"objective","kappa","rho","status","runtime_s","pert_gap_pct","true_value_added","n_picks"
+"myopic t=1",1e-06,0.0195,"TIME_LIMIT",180,0.0974,464070.529121488,64
+"myopic t=1",1e-08,0.000195,"TIME_LIMIT",180,0.0384,464255.798206486,64
+"myopic t=2",1e-06,3.3e-07,"TIME_LIMIT",180,0.0382,7.8919284412965,58

@@ -1,3 +1,0 @@
-"config","incumbent","bound","abs_gap","rel_gap_pct","runtime_s","status"
-"Config 1: default Gurobi params",100873.211450087,100879.565033207,6.35358311998425,0.00629858317054579,29,"OPTIMAL"
-"Config 2: MIPFocus = 3, Cuts = 2   (Option A1)",100869.375410236,100877.133984428,7.75857419172826,0.00769170440500312,49,"OPTIMAL"

@@ -1,6 +1,0 @@
-scenario,data_derived,wetland_low,grass_low,wetland_high,grass_high
-rcp45_wet,13.987,1.379,1.379,1.379,1.379
-rcp45_dry,11.967,1.231,1.231,1.231,1.231
-rcp85_wet,14.184,1.677,1.677,1.677,1.677
-rcp85_dry,14.942,1.497,1.497,1.497,1.497
-stationary,1.488,1.474,1.474,1.474,1.474
