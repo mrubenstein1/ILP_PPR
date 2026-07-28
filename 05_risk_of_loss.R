@@ -17,8 +17,8 @@
 # INPUTS:  data_panel (from script 04)
 # OUTPUTS: data_panel with trans_prob column populated; saved to input_data/
 
-# ── 0. Load data (if running standalone) ──────────────────────────────────────####
-# data_panel <- readRDS("input_data/data_panel.rds")
+# ── 0. Load data  ──────────────────────────────────────####
+data_panel <- readRDS("derived_data/panel_04_benefit.rds")
 
 
 # ══ PARAMETER ════════════════════════════════════════════════════════════════####
@@ -329,7 +329,7 @@ data_panel %>%
 
 # ── 11. Save ──────────────────────────────────────────────────────────────────
 
-saveRDS(data_panel, "input_data/data_panel.rds")
-write_csv(data_panel, "input_data/data_panel.csv")
+saveRDS(data_panel,  "derived_data/panel_05_risk.rds")
+write_csv(data_panel, "derived_data/panel_05_risk.csv")
 
 cat(sprintf("\n✓ data_panel saved with trans_prob (epsilon = %.2e).\n", epsilon))
