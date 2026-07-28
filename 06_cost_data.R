@@ -41,9 +41,9 @@
 # OUTPUTS: data_panel with cost column populated; saved to input_data/
 
 
-# ── 0. Load data (if running standalone) ──────────────────────────────────────####
-# data_panel <- readRDS("input_data/data_panel.rds")
-# eau_wmd    <- read_csv("input_data/eau_wmd_lookup.csv", show_col_types = FALSE)
+# ── 0. Load data ──────────────────────────────────────####
+data_panel <- readRDS("derived_data/panel_05_risk.rds")
+eau_wmd    <- read_csv("derived_data/eau_wmd_lookup.csv", show_col_types = FALSE)
 
 
 # ══ PARAMETERS ════════════════════════════════════════════════════════════════####
@@ -84,7 +84,6 @@ cat("Loading spatial inputs...\n")
 
 eau_r   <- rast("input_data/wmd_raster_equal_area.tif")  # EAU zone raster (WMD names)
 fmv_raw <- rast(places_path)                             # PLACES FMV: ln($/ha), 2017 USD
-eau_wmd <- read_csv("input_data/eau_wmd_lookup.csv", show_col_types = FALSE)
 
 cat("  EAU raster CRS:     ", crs(eau_r,   proj = TRUE), "\n")
 cat("  EAU raster res:     ", res(eau_r)[1], "m ×", res(eau_r)[2], "m\n")
@@ -463,8 +462,8 @@ data_panel %>%
 
 # ── 13. Save ──────────────────────────────────────────────────────────────────####
 
-saveRDS(data_panel, "input_data/data_panel.rds")
-write_csv(data_panel, "input_data/data_panel.csv")
+saveRDS(data_panel,  "derived_data/data_panel.rds")
+write_csv(data_panel, "derived_data/data_panel.csv")
 
 cat("\n✓ data_panel saved with cost column populated.\n")
 cat(sprintf(

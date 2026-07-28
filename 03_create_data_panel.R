@@ -238,8 +238,8 @@ eau_panel <- eau_panel %>%
  
 # 11. Save panel for later steps ####
  
-saveRDS(eau_panel, "input_data/eau_panel.rds")
-write_csv(eau_panel, "input_data/eau_panel.csv")
+saveRDS(eau_panel,  "derived_data/eau_panel.rds")
+write_csv(eau_panel, "derived_data/eau_panel.csv")
 
  
 # 12. Logic Check ####

@@ -5,6 +5,8 @@
 
 
 #### 1. Import data #####
+# ── 0. Load inputs ────────────────────────────────────────────────────────────
+eau_panel <- readRDS("derived_data/eau_panel.rds")
 benefit <- read.csv("input_data/benefit.csv")
 
 # restructure around gcm/rcp/time step structure.
@@ -391,6 +393,6 @@ if (length(failures) > 0) {
   cat("========================================\n\n")
 }
 
-
+saveRDS(data_panel, "derived_data/panel_04_benefit.rds")
 
 
