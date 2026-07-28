@@ -43,13 +43,17 @@ wmd_split <- rasterize(wmd, wmd_r, field = "WMD", touches = FALSE) #touches=F me
 plot(wmd_split)
 
 #save as geotiff
-#writeRaster(wmd_split, "input_data/wmd_raster_equal_area.tif", filetype = 'GTiff') #this line is commented out because once the tif is saved, it doesn't need to be re-written
+wmd_r_path <- file.path(DIR_DERIVED, "wmd_raster_equal_area.tif")
+if (!file.exists(wmd_r_path)) {
+  message("Writing EAU raster (slow, one time only)...")
+  writeRaster(wmd_split, wmd_r_path, filetype = "GTiff")
+}
 
  
 ##### 2. Extract EAU x WMD lookup table ##########
  
 # Reload the raster
-wmd_r   <- rast("input_data/wmd_raster_equal_area.tif")
+wmd_r <- rast(wmd_r_path)
 
 # ── 2. Build WMD reference table (numeric ID + area) ─────────────────────────
 wmd_ref <- wmd %>%
