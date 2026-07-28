@@ -50,7 +50,7 @@
 # ══════════════════════════════════════════════════════════════════════════════
 
 source("07_ilp_core.R")
-if (!isTRUE(.SETUP_DONE)) source("00_setup.R")
+if (!exists(".SETUP_DONE")) source("00_setup.R")
 
 TOL    <- 1e-6     # exact-arithmetic tolerance (P1, and the solver-independent P3 checks)
 VA_TOL <- 0.02    # solver-tolerance checks (P2, P4): fraction of value_added that a

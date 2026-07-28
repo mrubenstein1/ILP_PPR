@@ -18,7 +18,7 @@
 # OUTPUTS: data_panel with trans_prob column populated; saved to derived_data/
 
 #------ Setup ________
-if (!isTRUE(.SETUP_DONE)) source("00_setup.R")
+if (!exists(".SETUP_DONE")) source("00_setup.R")
 
 # ── 0. Load data  ──────────────────────────────────────####
 data_panel <- readRDS("derived_data/panel_04_benefit.rds")

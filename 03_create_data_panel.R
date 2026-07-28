@@ -9,7 +9,7 @@
     # LC estimates for 2020 will come from the "mean clim" analysis
 
 #------ Setup ________
-if (!isTRUE(.SETUP_DONE)) source("00_setup.R")
+if (!exists(".SETUP_DONE")) source("00_setup.R")
  
 # 1. Load EAU–WMD crosswalk ####
 eau_wmd <- read_csv(file.path(DIR_DERIVED, "eau_wmd_lookup.csv"), show_col_types = FALSE)

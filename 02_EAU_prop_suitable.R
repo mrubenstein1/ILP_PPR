@@ -12,7 +12,7 @@
     #Note that we end up removing the entire WMD with missing LC data in a downstream script. 
 
 #------ Setup ________
-if (!isTRUE(.SETUP_DONE)) source("00_setup.R")
+if (!exists(".SETUP_DONE")) source("00_setup.R")
 
 ##### 1. Create overlapping Area of Interest (AOI) ##########
 
