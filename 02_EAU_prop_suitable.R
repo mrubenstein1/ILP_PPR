@@ -18,7 +18,7 @@ if (!isTRUE(.SETUP_DONE)) source("00_setup.R")
 
 
 #1. Load EAU Mask
-aoi_mask <- rast("input_data/wmd_raster_equal_area.tif")
+aoi_mask <- rast(file.path(DIR_DERIVED, "wmd_raster_equal_area.tif"))
 
 #2. Load LC data
 lu_r <- rast("input_data/prairie_potholes_gcam_ref_rcp45/prairie_potholes_gcam_ref_rcp45_2014.tif")
@@ -29,8 +29,8 @@ lu_r <- resample(lu_r, aoi_mask, method = 'sum') # using summing which retains m
 shared_aoi <- mask(aoi_mask, lu_r)
 
 #4. write the raster of shared area between EAU and LC
-writeRaster(shared_aoi, "input_data/foresce_eau_shared_mask.tif", overwrite = TRUE)
-
+writeRaster(shared_aoi, file.path(DIR_DERIVED, "foresce_eau_shared_mask.tif"),
+            overwrite = TRUE)
 
 
   ##### 2. Resample LC data to EAUs ##########
@@ -44,7 +44,7 @@ scenarios <- list(
 )
 
 #2. Define correct mask
-aoi_mask <- rast("input_data/foresce_eau_shared_mask.tif")
+aoi_mask <- rast(file.path(DIR_DERIVED, "foresce_eau_shared_mask.tif"))
 
 #3. Define "suitable" habitat types:
 # 19 = Perennial Grass, 20 = Open Water, 26 = Grassland, 28 = Woody Wetland, 29 = Herbaceous Wetland

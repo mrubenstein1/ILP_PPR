@@ -84,7 +84,7 @@ if (!file.exists(places_path)) {
 
 cat("Loading spatial inputs...\n")
 
-eau_r   <- rast("input_data/wmd_raster_equal_area.tif")  # EAU zone raster (WMD names)
+eau_r   <- rast(file.path(DIR_DERIVED, "wmd_raster_equal_area.tif"))  # EAU zone raster (WMD names)
 fmv_raw <- rast(places_path)                             # PLACES FMV: ln($/ha), 2017 USD
 
 cat("  EAU raster CRS:     ", crs(eau_r,   proj = TRUE), "\n")
