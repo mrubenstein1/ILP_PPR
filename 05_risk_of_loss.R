@@ -15,7 +15,7 @@
 #   2020 baseline row     : mean of RCP 4.5 and 8.5 2020→2030 transitions
 #
 # INPUTS:  data_panel (from script 04)
-# OUTPUTS: data_panel with trans_prob column populated; saved to input_data/
+# OUTPUTS: data_panel with trans_prob column populated; saved to derived_data/
 
 #------ Setup ________
 if (!isTRUE(.SETUP_DONE)) source("00_setup.R")
