@@ -42,13 +42,13 @@ if (identical(SPEND_DOWN_MODE, "off"))
   cat("  (spend_down off — reproduces the pre-spend-down numbers.)\n")
 
 # ── 0. Load the data panel ────────────────────────────────────────────────────####
-data_panel <- readRDS("input_data/data_panel.rds")
+data_panel <- readRDS(file.path(DIR_DERIVED, "data_panel.rds"))
 
 # EAU -> (wmd_id, x_coord, y_coord) lookup, used to make the persisted schedule a
-# complete, mappable artifact (Option A: the coordinate join happens here in 08).
-EAU_LOOKUP <- "input_data/eau_wmd_lookup.rds"
+# complete, mappable artifact 
+EAU_LOOKUP <- file.path(DIR_DERIVED, "eau_wmd_lookup.rds")
 
-OUT_DIR <- "output_data"
+OUT_DIR <- DIR_OUT
 if (!dir.exists(OUT_DIR)) dir.create(OUT_DIR, recursive = TRUE)
 
 MODELS <- c("greedy", "myopic", "rolling")

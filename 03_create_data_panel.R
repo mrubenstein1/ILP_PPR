@@ -12,16 +12,13 @@
 if (!isTRUE(.SETUP_DONE)) source("00_setup.R")
  
 # 1. Load EAU–WMD crosswalk ####
- 
-eau_wmd <- read_csv("input_data/eau_wmd_lookup.csv", show_col_types = FALSE)
-
-# eau_wmd has: eau_id, wmd_id_num, wmd_id, area_km2, x_coord, y_coord [file:2]
+eau_wmd <- read_csv(file.path(DIR_DERIVED, "eau_wmd_lookup.csv"), show_col_types = FALSE)
 
  
 # 2. Load suitable habitat tables for both RCPs ####
- 
-lu_45 <- read_csv("input_data/Lu_prop_45.csv", show_col_types = FALSE)
-lu_85 <- read_csv("input_data/Lu_prop_85.csv", show_col_types = FALSE)
+lu_45 <- read_csv(file.path(DIR_DERIVED, "Lu_prop_45.csv"), show_col_types = FALSE)
+lu_85 <- read_csv(file.path(DIR_DERIVED, "Lu_prop_85.csv"), show_col_types = FALSE)
+
 # Columns look like rcp45_2014, rcp45_2020, ...; similarly for rcp85_* [file:1]
 
  
@@ -149,7 +146,8 @@ eau_panel <- panel_suitable_gcm %>%
 
 # 1. Load meanclim 2020 LC data and attach EAU IDs via row-order alignment
 #    Row order aligns with lu_45/lu_85 because keep_rows vectors are identical across all scenarios.
-lu_meanclim_2020 <- read_csv("input_data/Lu_prop_meanclim_2020.csv", show_col_types = FALSE)
+lu_meanclim_2020 <- read_csv(file.path(DIR_DERIVED, "Lu_prop_meanclim_2020.csv"),
+                             show_col_types = FALSE)
 
 baseline_2020 <- lu_meanclim_2020 %>%
   mutate(eau_row = row_number()) %>%

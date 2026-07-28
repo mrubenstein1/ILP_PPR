@@ -93,7 +93,7 @@ process_one_file <- function(fname, LU_in, aoi_mask, rcl_table, scf, n_cells) {
 # calculate time to run as a benchmark
 process_scenario <- function(LU_in, suffix,
                              aoi_mask, rcl_table, scf,
-                             n_cells, out_dir = "input_data",
+                             n_cells, out_dir = DIR_DERIVED,
                              n_cores = 1) {
   
   # FIXED PATTERN: match prairie_potholes_gcam_ref_rcp{suffix}_YYYY.tif naming convention
@@ -182,7 +182,7 @@ results <- lapply(names(scenarios), function(sfx) {
     rcl_table = rcl_table,
     scf = scf,
     n_cells = n_cells,
-    out_dir = "input_data",
+    out_dir = DIR_DERIVED,
     n_cores = n_cores
   )
 })
@@ -233,14 +233,14 @@ cat("Meanclim 2020",
 
 #4. Save results
 write.csv(
-  lu_prop_meanclim_keep,
-  "input_data/Lu_prop_meanclim_2020.csv",
+  lu_prop_meanclim_keep, 
+  file.path(DIR_DERIVED, "Lu_prop_meanclim_2020.csv"),
   row.names = FALSE
 )
 
 saveRDS(
   keep_rows_meanclim,
-  "input_data/Lu_prop_keep_rows_meanclim.rds"
+  file.path(DIR_DERIVED, "Lu_prop_keep_rows_meanclim.rds")
 )
 
 
