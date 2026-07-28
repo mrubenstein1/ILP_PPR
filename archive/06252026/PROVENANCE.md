@@ -114,3 +114,8 @@ the enacted policy (which implements one period and re-optimises), is conservati
 (truncation only biases myopic down), and leaves the ~13% rolling-vs-myopic finding
 intact; the only scenario that genuinely stalled was the stationary null, whose anchor
 has now been corrected.
+
+
+## NOTE:
+
+the hand-typed tables in 11_results.qmd (the Updates section, lines ~415–460) came from model_results_capped.csv, and the median conversion-risk figure of 0.0000361% quoted in the prose came from a diagnostic script. After this move, those numbers exist only in the archive.

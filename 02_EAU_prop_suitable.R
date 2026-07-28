@@ -120,7 +120,7 @@ process_scenario <- function(LU_in, suffix,
   
   t_batch <- Sys.time()
   
-  res_list <- mclapply(
+  res_list <- parallel::mclapply(
     file_names,
     FUN = process_one_file,
     LU_in = LU_in,

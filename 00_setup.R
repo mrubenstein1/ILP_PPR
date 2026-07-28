@@ -23,8 +23,14 @@
 .check(.core, "core")
 HAS_SPATIAL <- .check(.spatial, "spatial", hard = FALSE)
 
+.check(.report, "reporting", hard = FALSE)
+
 suppressPackageStartupMessages(
   invisible(lapply(.core, library, character.only = TRUE))
+)
+
+if (HAS_SPATIAL) suppressPackageStartupMessages(
+  invisible(lapply(.spatial, library, character.only = TRUE))
 )
 
 # ── Paths ─────────────────────────────────────────────────────────────────────

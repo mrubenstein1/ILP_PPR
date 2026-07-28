@@ -37,7 +37,7 @@
 #
 # INPUTS:  data_panel (from script 05), eau_wmd_lookup.csv,
 #          wmd_raster_equal_area.tif, places_fmv_vacant.tif,
-#          input_data/Wetland_Management_Districts/FSMS_WMD.shp
+#          derived_data/Wetland_Management_Districts/FSMS_WMD.shp
 # OUTPUTS: data_panel with cost column populated; saved to input_data/
 
 #------ Setup ________

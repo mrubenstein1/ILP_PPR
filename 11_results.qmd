@@ -203,7 +203,7 @@ caps <- list(
 )
 ```
 
-*Rate scenario: `r rate_label` · results generated `r gen_date`.*
+*Results generated `r gen_date`.*
 
 ```{=html}
 <!-- (Title date above = when this document was rendered; the line just above = when
