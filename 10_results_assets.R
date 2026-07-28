@@ -11,12 +11,11 @@
 if (!isTRUE(.SETUP_DONE)) source("00_setup.R")
 
 # ── CONFIG ─────────────────────────────────────────────────────────────────────
-RATE_LABEL <- "data_derived"   # or: wetland_high, grass_low, grass_high
-IN_DIR     <- paste0("output_data_", RATE_LABEL)
-OUT_DIR    <- paste0("output_figs/_", RATE_LABEL)
+IN_DIR   <- DIR_OUT      # "output_data"
+OUT_DIR  <- DIR_FIGS     # "output_figs"
 RESULTS  <- file.path(IN_DIR, "model_results.csv")
 TRAJ     <- file.path(IN_DIR, "model_trajectories.csv")
-SCHEDULE <- file.path(IN_DIR, "acquisition_schedule_spatial.csv")  # 08's persisted schedule (maps)
+SCHEDULE <- file.path(IN_DIR, "acquisition_schedule_spatial.csv")
 
 DPI         <- 300
 BASE_SIZE   <- 12
@@ -36,7 +35,7 @@ DRAW_MAPS    <- TRUE                       # set FALSE to skip maps (tables + fi
 CELL_M       <- sqrt(282e6)               # EAU side length in metres (tile width/height)
 MAP_BG       <- "grey91"                  # unacquired-EAU landscape colour
 WMD_OVERLAY  <- TRUE                       # draw WMD outlines if raster + terra/sf available
-WMD_RASTER   <- "input_data/wmd_raster_equal_area.tif"
+WMD_RASTER   <- "derived_data/wmd_raster_equal_area.tif"
 WMD_LINE_COL <- "grey25"
 WMD_LINE_W   <- 0.25
 PAIR_COL <- c("Acquired by both"               = "#5E4FA2",
@@ -305,7 +304,6 @@ drew_maps <- DRAW_MAPS && file.exists(SCHEDULE)
 jsonlite::write_json(
   list(generated      = format(Sys.time(), "%Y-%m-%dT%H:%M:%S"),
        generated_date = format(Sys.Date(), "%Y-%m-%d"),
-       rate_label     = RATE_LABEL,
        maps_drawn     = drew_maps,
        r_version      = R.version.string),
   file.path(OUT_DIR, "run_metadata.json"), auto_unbox = TRUE, pretty = TRUE)
