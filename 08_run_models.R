@@ -24,7 +24,7 @@
 # ══════════════════════════════════════════════════════════════════════════════
 
 source("07_ilp_core.R")
-if (!isTRUE(.SETUP_DONE)) source("00_setup.R")
+if (!exists(".SETUP_DONE")) source("00_setup.R")
 
 # ── Reproducibility ───────────────────────────────────────────────────────────####
 # A capped solve under multi-threaded search is not bit-reproducible run-to-run
