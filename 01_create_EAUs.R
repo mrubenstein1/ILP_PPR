@@ -9,21 +9,9 @@
 
 #Credit Heini Kujala for original script; modified by Madeleine Rubenstein March 2026
 
-#Load required libraries for all scripts
-library(terra)
-library(sf)
-library(dplyr)
-library(tidyr)
-library(parallel)
-library(readr)
-library(stringr)
-library(purrr)
-library(ggplot2)
-library(forcats)
-library(Matrix)
-library(scales)
-library(flextable)
-library(patchwork)
+
+#------ Setup ________
+if (!isTRUE(.SETUP_DONE)) source("00_setup.R")
 
  
 ##### 1. Import Data ##########

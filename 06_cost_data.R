@@ -40,6 +40,8 @@
 #          input_data/Wetland_Management_Districts/FSMS_WMD.shp
 # OUTPUTS: data_panel with cost column populated; saved to input_data/
 
+#------ Setup ________
+if (!isTRUE(.SETUP_DONE)) source("00_setup.R")
 
 # ── 0. Load data ──────────────────────────────────────####
 data_panel <- readRDS("derived_data/panel_05_risk.rds")

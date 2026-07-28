@@ -3,6 +3,8 @@
     # Import and clean benefit data
     # add to the established data panel
 
+#------ Setup ________
+if (!isTRUE(.SETUP_DONE)) source("00_setup.R")
 
 #### 1. Import data #####
 # ── 0. Load inputs ────────────────────────────────────────────────────────────
