@@ -88,9 +88,9 @@ plot(as.polygons(wmd_split, dissolve = FALSE), add = TRUE, border = "white", lwd
 
 
 # ── 6. Save ───────────────────────────────────────────────────────────────────
-saveRDS(eau_wmd,     "input_data/eau_wmd_lookup.rds")
-write.csv(eau_wmd,     "input_data/eau_wmd_lookup.csv",   row.names = FALSE)
-write.csv(eau_summary, "input_data/wmd_summary.csv",       row.names = FALSE)
+saveRDS(eau_wmd,       file.path(DIR_DERIVED, "eau_wmd_lookup.rds"))
+write.csv(eau_wmd,     file.path(DIR_DERIVED, "eau_wmd_lookup.csv"), row.names = FALSE)
+write.csv(eau_summary, file.path(DIR_DERIVED, "wmd_summary.csv"),    row.names = FALSE)
 
  
 ##### 3. Logic Check ##########

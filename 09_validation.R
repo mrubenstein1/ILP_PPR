@@ -63,7 +63,7 @@ report <- function(name, ok, detail = "") {
   cat(sprintf("  [%s] %-46s %s\n", ifelse(isTRUE(ok), "PASS", "FAIL"), name, detail))
 }
 
-data_panel <- readRDS("input_data/data_panel.rds")
+data_panel <- readRDS(file.path(DIR_DERIVED, "data_panel.rds"))
 
 
 # ── P1. ILP == brute-force optimum (tiny synthetic instance) ──────────────────####
