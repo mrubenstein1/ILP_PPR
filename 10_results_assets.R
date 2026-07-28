@@ -1,32 +1,14 @@
 # ═══════════════════════════════════════════════════════════════════════════════
-# 10_results_assets.R  —  Asset generator for the PPR acquisition results document
+# 10_results_assets.R  —  Asset generator (figs, tables, maps) for the PPR acquisition results document
 # ═══════════════════════════════════════════════════════════════════════════════
-#
-# ARCHITECTURE (part 1 of 2). This script is a PURE ASSET GENERATOR. It writes
-# images + data only — it renders NO document text, NO titles, NO captions, NO docx.
-# All human-readable text (titles, captions, numbering) and the layout live in the
-# companion document, results.qmd, which EMBEDS the assets produced here.
-#
-#   • Re-run THIS script      → refresh the numbers, figures, and maps.
-#   • Re-render results.qmd   → rebuild the document around them.
-#
-#
 # Writes to OUT_DIR:
-#   table_over_baseline.csv        value each model creates over the do-nothing baseline
-#   table_gap_vs_rolling.csv       greedy/myopic value-added gap vs. rolling
-#   overtime_gap.png / .pdf        Figure: cumulative gap vs. rolling over the horizon
-#   decline.png / .pdf             Figure: landscape abundance over time (rolling)
-#   foresight_difference.png/.pdf  Map: rolling vs myopic acquisition sets (categorical)
-#   prevented_loss_diff.png/.pdf   Map: per-parcel ΔV = rolling − myopic (diverging)
-#   run_metadata.json              generation timestamp + rate label (results.qmd reads this)
 #
 # Tables are written as tidy CSVs of RAW NUMBERS; all formatting and the grouped-header
-# styling happen in results.qmd. Figures/maps are saved WITHOUT titles or captions by
-# design — the document supplies those. Maps need only ggplot2 for the cells; terra + sf
-# are used solely for the optional WMD outline overlay and are skipped gracefully if
-# absent. Set DRAW_MAPS <- FALSE (or run an 08 that predates schedule persistence) to
-# produce tables + figures only.
+# styling happen in results.qmd. Same approach with Figs/Maps
+
 # ═══════════════════════════════════════════════════════════════════════════════
+
+if (!isTRUE(.SETUP_DONE)) source("00_setup.R")
 
 # ── CONFIG ─────────────────────────────────────────────────────────────────────
 RATE_LABEL <- "data_derived"   # or: wetland_high, grass_low, grass_high

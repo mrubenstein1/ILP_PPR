@@ -8,7 +8,8 @@
 # Note that only LC data from 2030 onwards is used from the 4.5 or 8.5 scenarios. 
     # LC estimates for 2020 will come from the "mean clim" analysis
 
-
+#------ Setup ________
+if (!isTRUE(.SETUP_DONE)) source("00_setup.R")
  
 # 1. Load EAU–WMD crosswalk ####
  

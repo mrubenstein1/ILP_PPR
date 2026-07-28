@@ -11,8 +11,10 @@
     # This script corrects that and ensures that all remaining EAUs have full LC data.
     #Note that we end up removing the entire WMD with missing LC data in a downstream script. 
 
+#------ Setup ________
+if (!isTRUE(.SETUP_DONE)) source("00_setup.R")
 
-  ##### 1. Create overlapping Area of Interest (AOI) ##########
+##### 1. Create overlapping Area of Interest (AOI) ##########
 
 
 #1. Load EAU Mask
