@@ -36,13 +36,28 @@ periods** and **5 scenarios** (RCP 4.5/8.5 × wet/dry, plus a stationary null).
 Requires R with the native **Gurobi** R package and an active (academic) license
 
 1. Data pipeline (scripts `01`–`06`) — produces
-   `input_data/data_panel.rds`.
-2. `09__validation.R` — run first, with Gurobi active, to certify the formulation (P1–P5).
+   `derived_data/data_panel.rds`.
+2. `09_validation.R` — run first, with Gurobi active, to certify the formulation (P1–P5).
    Does *not* need to be re-run every time `08` is run.
-3. `08__run_models.R` — runs all three models on all five scenarios and writes results to
+3. `08_run_models.R` — runs all three models on all five scenarios and writes results to
    `output_data/`. Includes a per-parcel acquisition schedule (with EAU
    coordinates) to facilitate production of maps.
 4. `10_results_assets.R` — reads `08`'s outputs; builds the 2 tables, 2 figures, 2 maps   (`ggplot2`/`flextable`; `terra`/`sf` only for the optional WMD. outline overlay) into `output_figs/`.  
+
+## Input data
+
+`input_data/` is not distributed with the repository. Assemble it as follows:
+
+| Path | Source |
+|---|---|
+| `input_data/Wetland_Management_Districts/FSMS_WMD.shp` (with `.dbf`, `.prj`, `.shx`, and other sidecar files) | USFWS Wetland Management District boundaries |
+| `input_data/prairie_potholes_gcam_ref_meanclim/` — 10 GeoTIFFs, 2014–2100 | USGS FOREsce, GCAM Reference: https://www.sciencebase.gov/catalog/item/5b683db2e4b006a11f75b06a |
+| `input_data/prairie_potholes_gcam_ref_rcp45/` — 10 GeoTIFFs, 2014–2100 | as above, RCP 4.5 |
+| `input_data/prairie_potholes_gcam_ref_rcp85/` — 10 GeoTIFFs, 2014–2100 | as above, RCP 8.5 |
+| `input_data/benefit.csv` | Waterfowl abundance projections (McKenna et al. 2026) |
+| `input_data/places_fmv_pnas_dryad/1 estimates/places_fmv_vacant.tif` | Nolte 2020 PLACES FMV: https://datadryad.org/dataset/doi:10.5061/dryad.np5hqbzq9 |
+
+## Outputs
 
 Outputs: `output_data/model_results.{rds,csv}`, `model_trajectories.csv`,
 `acquisition_schedule_spatial.csv` (the per-parcel schedule, EAU-keyed with coordinates),
@@ -99,7 +114,7 @@ and `solver_convergence.csv` (a per-run record of how often the per-solve time c
    against its true future, and writes results, trajectories, a convergence summary, and the
    **per-parcel acquisition schedule joined to EAU coordinates**
    (`acquisition_schedule_spatial.csv`, also embedded in `model_results.rds`). The schedule
-   join reads `input_data/eau_wmd_lookup.rds`; if absent it warns and writes the schedule
+   join reads `derived_data/eau_wmd_lookup.rds`; if absent it warns and writes the schedule
    without coordinates rather than failing.
     - option to run model as "reproducible" lives here. Run single-thread + seeded
    (`REPRODUCIBLE <- TRUE`) for bit-reproducible reported numbers *and* a stable map
@@ -111,7 +126,7 @@ and `solver_convergence.csv` (a per-run record of how often the per-solve time c
 **Reporting / mapping:**
 
 10. **`10_results_assets`** — single pure-reader reporting script: builds two results tables
-    + six figures (`ggplot2`/`flextable`) **and** three acquisition maps (footprint by
+    + two figures (`ggplot2`/`flextable`) **and** two acquisition maps (footprint by
     decade; rolling-vs-myopic foresight difference; wet-vs-dry) from `08`'s saved CSVs into
     `output_figs/`. No solver/`07` needed. The maps need only `ggplot2`; `terra`/`sf` are
     used solely for the optional WMD outline overlay (auto-skipped if absent), so a user

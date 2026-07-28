@@ -39,9 +39,6 @@ wmd_r <- rast(wmd, resolution = cell_size)
 #assign WMD ID to each EAU (each cell of this raster = 1 EAU)
 wmd_split <- rasterize(wmd, wmd_r, field = "WMD", touches = FALSE) #touches=F means that EAUs are only assigned to the WMD if the center point falls within the polygon
 
-#visualize
-plot(wmd_split)
-
 #save as geotiff
 wmd_r_path <- file.path(DIR_DERIVED, "wmd_raster_equal_area.tif")
 if (!file.exists(wmd_r_path)) {
@@ -82,18 +79,13 @@ eau_summary <- eau_wmd %>%
   summarise(n_eaus = n(), .groups = "drop") %>%
   arrange(wmd_id_num)
 
-# ── 5. Visualize ──────────────────────────────────────────────────────────────────
-plot(wmd_split)
-plot(as.polygons(wmd_split, dissolve = FALSE), add = TRUE, border = "white", lwd = 0.3)
-
-
-# ── 6. Save ───────────────────────────────────────────────────────────────────
+# ── 5. Save ───────────────────────────────────────────────────────────────────
 saveRDS(eau_wmd,       file.path(DIR_DERIVED, "eau_wmd_lookup.rds"))
 write.csv(eau_wmd,     file.path(DIR_DERIVED, "eau_wmd_lookup.csv"), row.names = FALSE)
 write.csv(eau_summary, file.path(DIR_DERIVED, "wmd_summary.csv"),    row.names = FALSE)
 
  
-##### 3. Logic Check ##########
+##### 6. Logic Check ##########
  
 
 checks <- list(
