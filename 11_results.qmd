@@ -78,12 +78,21 @@ set_flextable_defaults(font.family = "Latin Modern Roman")
 
 OUT_DIR    <- file.path("output_figs")
 
+print(getwd()); print(file.exists(file.path(OUT_DIR, "run_metadata.json")))
+
 ## run metadata (written by 10_results_assets.R) --------------------------------
 meta <- tryCatch(
-  jsonlite::read_json(file.path(OUT_DIR, "run_metadata.json"), simplifyVector = TRUE))
+  jsonlite::read_json(file.path(OUT_DIR, "run_metadata.json"), simplifyVector = TRUE),
+  error = function(e) NULL)
 gen_date  <- if (!is.null(meta$generated_date)) meta$generated_date else "unknown"
 maps_ok   <- file.exists(file.path(OUT_DIR, "foresight_difference.png"))
 maps_missing <- !maps_ok   # referenced by the fallback note (avoids '!expr !x' YAML clash)
+
+## descriptive-summary assets (written by the same script, but from the INPUTS panel,
+## so they exist independently of whether 08 persisted a schedule) ---------------
+desc_ok       <- file.exists(file.path(OUT_DIR, "fig_benefit_ribbon.png"))
+desc_maps_ok  <- file.exists(file.path(OUT_DIR, "map_benefit_2020_2100.png"))
+desc_missing  <- !desc_ok
 
 ## formatters (presentation lives here, not in the asset script) ----------------
 fmt_pct <- function(x) vapply(x, function(v) {
@@ -199,7 +208,23 @@ caps <- list(
     "here and prevents duck-pair loss; red: myopic invests here instead, securing",
     "absolute conservation benefit but relatively less than rolling. grey: no difference",
     "Coloured cells sum to the value-added gap. Colour is capped",
-    "symmetrically at the 98th percentile of |\u0394V|.")
+    "symmetrically at the 98th percentile of |\u0394V|."),
+  fig_benefit_map = paste(
+    "**Duck-pair abundance across the PPR: 2020 baseline vs. 2100 under RCP 8.5 dry.**",
+    "The 2020 panel is the shared cross-scenario baseline common to all five scenarios",
+    "\u2014 only the 2100 panel is scenario-specific. One tile = one EAU; outlines are WMDs."),
+  fig_benefit_ribbon = paste(
+    "**Per-EAU duck-pair abundance to 2100, by scenario.** Solid line = median",
+    "across EAUs; dark band = interquartile range; light band = 10th\u201390th percentile.",
+    "Bands show spatial variability across EAUs within a given scenario-year."),
+  fig_risk_box = paste(
+    "**Per-period conversion risk across EAUs, by decade and emissions scenario.**",
+    "Box = median and IQR; whiskers = 1.5 \u00d7 IQR; horizontal tick = maximum;",
+    "points = individual EAUs. The number above each box is the % of EAUs sitting at the",
+    "background conversion floor."),
+  fig_cost_map = paste(
+    "**Acquisition cost per hectare, 2020 USD.** Raw dollars, no log transform, grouped",
+    "into six equal-count classes so contrast is spread across the region.")
 )
 ```
 
@@ -261,6 +286,64 @@ periods** and **5 scenarios** (RCP 4.5/8.5 × wet/dry, plus a stationary null).
 # Results
 
 ## Descriptive Summary
+
+### Duck distribution
+Consistent with other studies, duck abundance is higher in the western portion of the PPR than the eastern portion. This overall distribution pattern continues through 2100. 
+```{r}
+#| label: fig-benefit-map
+#| fig-cap: !expr caps$fig_benefit_map
+#| out-width: 100%
+#| eval: !expr desc_maps_ok
+knitr::include_graphics(file.path(OUT_DIR, "map_benefit_2020_2100.png"))
+```
+In all scenarios, duck abundance is predicted to decline across the PPR by 2100, although wet scenarios fare better than dry scenarios.
+```{r}
+#| label: fig-benefit-ribbon
+#| fig-cap: !expr caps$fig_benefit_ribbon
+#| out-width: 100%
+#| eval: !expr desc_ok
+knitr::include_graphics(file.path(OUT_DIR, "fig_benefit_ribbon.png"))
+```
+
+{{< pagebreak >}}
+
+
+### Risk
+Risk of conversion across all EAUs is heavily skewed, with the vast majority of EAUs showing a nearly zero per period conversion risk. There is a (currently undiagnosed) drop in 2050 in per period conversion risk. 
+
+```{r}
+#| label: fig-risk-box
+#| fig-cap: !expr caps$fig_risk_box
+#| out-width: 100%
+#| eval: !expr desc_ok
+knitr::include_graphics(file.path(OUT_DIR, "fig_risk_box.png"))
+```
+
+{{< pagebreak >}}
+
+
+### Cost
+Acquisition cost per hectare. High cost parcels are concentrated in the eastern portion of the PPR. 
+
+```{r}
+#| label: fig-cost-map
+#| fig-cap: !expr caps$fig_cost_map
+#| out-width: 85%
+#| eval: !expr desc_maps_ok
+knitr::include_graphics(file.path(OUT_DIR, "map_cost_binned.png"))
+```
+
+```{r}
+#| label: no-desc-note
+#| eval: !expr desc_missing
+#| results: asis
+cat("*(Descriptive figures not generated \u2014 the inputs panel was absent when",
+    "10_results_assets.R last ran. Run 06_cost_data.R, rerun the asset script,",
+    "then re-render.)*")
+```
+
+{{< pagebreak >}}
+
 
 
 
