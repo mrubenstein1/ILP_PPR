@@ -260,6 +260,10 @@ periods** and **5 scenarios** (RCP 4.5/8.5 × wet/dry, plus a stationary null).
 
 # Results
 
+## Descriptive Summary
+
+
+
 ## Acquisition value over baseline
 
 This table compares the total benefit secured across the landscape (2020-2100) via three different acquisition policies (rolling, myopic, and greedy) with a "do-nothing" baseline scenario in which no parcels are acquired. All acquisition policies outperform the do-nothing baseline under climate change scenarios; there is no improvement over the do-nothing baseline under stationarity due to conversion risk set to near zero. 
