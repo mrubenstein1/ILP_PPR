@@ -60,18 +60,20 @@ wmd_ref <- wmd %>%
   mutate(wmd_id_num = row_number())            # numeric ID 1:N alphabetically
 
 # ── 3. Extract EAU × WMD lookup table from raster ────────────────────────────
+
 eau_wmd <- as.data.frame(wmd_r, xy = TRUE, cells = TRUE) %>%
-  rename(
-    eau_id  = cell,
-    x_coord = x,
-    y_coord = y,
-    wmd_id  = "WMD"
-  ) %>%
+  rename(cell_id = cell, x_coord = x, y_coord = y, wmd_id = "WMD") %>%
   filter(!is.na(wmd_id)) %>%
-  left_join(wmd_ref, by = "wmd_id") %>%       # attach numeric ID and area
-  arrange(wmd_id_num, eau_id) %>%
-  mutate(eau_id = row_number()) %>%            # re-index EAUs 1:N sequentially
-  select(eau_id, wmd_id_num, wmd_id, area_km2, x_coord, y_coord)
+  left_join(wmd_ref, by = "wmd_id") %>%
+  arrange(wmd_id_num, cell_id) %>%      # reproduces the previous ordering exactly
+  mutate(eau_id = row_number()) %>%
+  select(eau_id, cell_id, wmd_id_num, wmd_id, area_km2, x_coord, y_coord)
+
+stopifnot(identical(
+  as.integer(cellFromXY(wmd_r, cbind(eau_wmd$x_coord, eau_wmd$y_coord))),
+  as.integer(eau_wmd$cell_id)))
+
+
 
 # ── 4. WMD summary table ──────────────────────────────────────────────────────
 eau_summary <- eau_wmd %>%
@@ -97,7 +99,11 @@ checks <- list(
   "EAU IDs are sequential 1:N"  = all(eau_wmd$eau_id == seq_len(nrow(eau_wmd))),
   "Expected 24 WMDs"            = nrow(eau_summary) == 24,
   "All WMDs have at least 1 EAU" = all(eau_summary$n_eaus > 0),
-  "Total EAUs in expected range" = between(nrow(eau_wmd), 1000, 1500)
+  "Total EAUs in expected range" = between(nrow(eau_wmd), 1000, 1500),
+  "cell_id unique"             = !any(duplicated(eau_wmd$cell_id)),
+  "cell_id round-trips via XY" = identical(
+    as.integer(cellFromXY(wmd_r, cbind(eau_wmd$x_coord, eau_wmd$y_coord))),
+    as.integer(eau_wmd$cell_id))
 )
 
 for (nm in names(checks)) {
@@ -138,3 +144,5 @@ if (length(failures) > 0) {
 } else {
   cat(sprintf("\n  All checks passed. WMDs: %d | Total EAUs: %d\n",
               nrow(eau_summary), nrow(eau_wmd)))}
+
+

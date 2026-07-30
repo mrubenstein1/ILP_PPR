@@ -97,6 +97,7 @@ and `solver_convergence.csv` (a per-run record of how often the per-solve time c
 | `habitat_share` | double | `prop_suitable / total_prop_suitable`; the EAU's fraction of its WMD's suitable habitat in that scenario-year. `NA` where the WMD total is 0. |
 | `trans_prob` | double | Per-period risk of habitat loss (transition probability), bounded [0, 1]. |
 | `cost` | double | Estimated acquisition cost of the EAU in nominal USD for that decision year. Scenario-invariant. |
+| cell_id | integer | Raster cell number in the EAU grid — the permanent by-place key linking each EAU to its location. Used to join land-cover data to the panel by position on the ground rather than by row order. NA for 2020 baseline and stationary rows, which are constructed from eau_id after the land-cover join and never carry the cell key. |
 
 
 **Modeling core:**

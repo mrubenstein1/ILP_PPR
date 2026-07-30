@@ -18,6 +18,14 @@ eau_wmd <- read_csv(file.path(DIR_DERIVED, "eau_wmd_lookup.csv"), show_col_types
 # 2. Load suitable habitat tables for both RCPs ####
 lu_45 <- read_csv(file.path(DIR_DERIVED, "Lu_prop_45.csv"), show_col_types = FALSE)
 lu_85 <- read_csv(file.path(DIR_DERIVED, "Lu_prop_85.csv"), show_col_types = FALSE)
+keep45 <- readRDS(file.path(DIR_DERIVED, "Lu_prop_keep_rows_45.rds"))
+keep85 <- readRDS(file.path(DIR_DERIVED, "Lu_prop_keep_rows_85.rds"))
+keepmc <- readRDS(file.path(DIR_DERIVED, "Lu_prop_keep_rows_meanclim.rds"))
+stopifnot(identical(keep45, keep85), identical(keep45, keepmc))
+lu_cells <- which(keep45)
+stopifnot(nrow(lu_45) == length(lu_cells), nrow(lu_85) == length(lu_cells))
+
+
 
 # Columns look like rcp45_2014, rcp45_2020, ...; similarly for rcp85_* [file:1]
 
@@ -45,7 +53,7 @@ cols_85_use <- paste0("rcp85_", years_use)
  
 panel_45 <- lu_45 %>%
   select(all_of(cols_45_use)) %>%
-  mutate(eau_row = row_number()) %>%
+  mutate(cell_id = lu_cells) %>%
   pivot_longer(
     cols      = starts_with("rcp45_"),
     names_to  = "time_period",
@@ -55,14 +63,14 @@ panel_45 <- lu_45 %>%
     year         = as.integer(str_extract(time_period, "[0-9]{4}")),
     rcp          = "45"
   ) %>%
-  select(eau_row, year, rcp, prop_suitable)
+  select(cell_id, year, rcp, prop_suitable)
 
  
 # 5. Build long table for RCP 8.5: EAU × year ####
  
 panel_85 <- lu_85 %>%
   select(all_of(cols_85_use)) %>%
-  mutate(eau_row = row_number()) %>%
+  mutate(cell_id = lu_cells)  %>%
   pivot_longer(
     cols      = starts_with("rcp85_"),
     names_to  = "time_period",
@@ -72,7 +80,7 @@ panel_85 <- lu_85 %>%
     year         = as.integer(str_extract(time_period, "[0-9]{4}")),
     rcp          = "85"
   ) %>%
-  select(eau_row, year, rcp, prop_suitable)
+  select(cell_id, year, rcp, prop_suitable)
 
  
 # 6. Stack both RCPs ####
@@ -81,27 +89,27 @@ panel_suitable <- bind_rows(panel_45, panel_85)
 
 # At this point: one row per "retained EAU row" × year × RCP [file:1]
 
- 
-# 7. Attach EAU IDs and WMD IDs (crosswalk) ####
 
 
-# IMPORTANT: we assume that rows in lu_45 / lu_85 correspond, in order,
-# to the subset of EAUs that have valid land cover data.
-# we align by simple row order:
+# 7. Attach EAU IDs and WMD IDs — BY PLACE (raster cell number) ####
 
-n_eau_panel <- length(unique(panel_suitable$eau_row))
-if (n_eau_panel != nrow(lu_45)) {
-  warning("Number of unique eau_row does not equal nrow(lu_45);",
-          " please double-check alignment with eau_wmd.")
+eau_meta <- eau_wmd %>% select(cell_id, eau_id, wmd_id)
+
+# Log both directions of the mismatch before joining.
+cells_no_eau <- setdiff(lu_cells, eau_meta$cell_id)   # land cover outside any WMD
+eaus_no_data <- setdiff(eau_meta$cell_id, lu_cells)   # EAU with no FOREsce coverage
+
+cat(sprintf("  Land-cover cells not in any WMD : %d\n", length(cells_no_eau)))
+cat(sprintf("  EAUs with no land-cover data    : %d   (expect 41)\n", length(eaus_no_data)))
+if (length(eaus_no_data)) {
+  cat("  Dropped EAUs by WMD:\n")
+  eau_wmd %>% filter(cell_id %in% eaus_no_data) %>%
+    count(wmd_id, name = "n_dropped") %>% arrange(desc(n_dropped)) %>%
+    as.data.frame() %>% print(row.names = FALSE)
 }
 
-eau_meta <- eau_wmd %>%
-  slice(seq_len(n_eau_panel)) %>%
-  mutate(eau_row = row_number()) %>%
-  select(eau_row, eau_id, wmd_id)
-
-panel_suitable <- panel_suitable %>%
-  left_join(eau_meta, by = "eau_row")
+panel_suitable <- panel_suitable %>% inner_join(eau_meta, by = "cell_id")
+stopifnot(n_distinct(panel_suitable$eau_id) == 1169L)
 
  
 # 8. Duplicate rows for wet vs dry GCMs. ####
@@ -150,8 +158,8 @@ lu_meanclim_2020 <- read_csv(file.path(DIR_DERIVED, "Lu_prop_meanclim_2020.csv")
                              show_col_types = FALSE)
 
 baseline_2020 <- lu_meanclim_2020 %>%
-  mutate(eau_row = row_number()) %>%
-  left_join(eau_meta, by = "eau_row") %>%
+  mutate(cell_id = lu_cells) %>%
+  inner_join(eau_meta, by = "cell_id") %>%
   select(eau_id, prop_suitable_baseline = meanclim_2020)
 
 
@@ -272,20 +280,13 @@ rows_per_eau <- eau_panel %>%
 bad_row_counts <- rows_per_eau %>% filter(n_rows_eau != expected_rows_per_eau)
 
 # Check 4: EAU counts per WMD should match the lookup table
-# NOTE: Windom is excluded from this check — 42 of its EAUs fall outside the
-# FOREsce extent and are dropped in Script 1. Windom will be removed entirely
-# in a downstream script, so the mismatch is expected and harmless.
-
-eaus_per_wmd_panel <- eau_panel %>%
-  distinct(eau_id, wmd_id) %>%
-  count(wmd_id, name = "n_eaus_panel")
 
 eaus_per_wmd_lookup <- eau_wmd %>%
+  filter(cell_id %in% lu_cells) %>%
   count(wmd_id, name = "n_eaus_lookup")
 
 bad_wmd_counts <- eaus_per_wmd_lookup %>%
   left_join(eaus_per_wmd_panel, by = "wmd_id") %>%
-  filter(wmd_id != "Windom") %>%                    # exclude known expected mismatch
   filter(n_eaus_lookup != n_eaus_panel | is.na(n_eaus_panel))
 
 # Check 5: prop_suitable should be identical across wet/dry within each EAU–year–RCP
@@ -304,6 +305,29 @@ stationary_violations <- eau_panel %>%
     .groups = "drop"
   ) %>%
   filter(!dplyr::near(min_prop, max_prop))
+
+# Check 7: verify that spatial join has completed properly
+verify_by_place <- function(lu_tbl, rcp_label) {
+  truth_key <- eau_meta %>% select(cell_id, eau_id)
+  worst <- 0
+  for (y in intersect(years_use, unique(eau_panel$year))) {
+    truth <- tibble(cell_id = lu_cells,
+                    truth = lu_tbl[[paste0("rcp", rcp_label, "_", y)]]) %>%
+      inner_join(truth_key, by = "cell_id")
+    stored <- eau_panel %>% filter(year == y, rcp == rcp_label) %>%
+      distinct(eau_id, prop_suitable)
+    cmp <- inner_join(truth, stored, by = "eau_id")
+    if (nrow(cmp) != nrow(stored)) return(list(ok = FALSE, worst = NA_real_))
+    worst <- max(worst, max(abs(cmp$truth - cmp$prop_suitable)))
+  }
+  list(ok = worst <= 1e-9, worst = worst)
+}
+v45 <- verify_by_place(lu_45, "45"); v85 <- verify_by_place(lu_85, "85")
+cat(sprintf("  %s prop_suitable on own EAU, RCP 4.5 (max dev %.2e)\n",
+            if (v45$ok) "[PASS]" else "[FAIL]", v45$worst))
+cat(sprintf("  %s prop_suitable on own EAU, RCP 8.5 (max dev %.2e)\n",
+            if (v85$ok) "[PASS]" else "[FAIL]", v85$worst))
+if (!v45$ok || !v85$ok) stop("BY-PLACE CHECK FAILED — habitat values misassigned.")
 
 # ── Run all checks ───────────────────────────────────────────────────────────
 checks <- list(

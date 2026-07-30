@@ -470,7 +470,30 @@ knitr::include_graphics(file.path(OUT_DIR, "prevented_loss_diff.png"))
      them. They still use the house table style and auto-number after the others. -->
 ```
 
-## Temporal alignment of benefit data
+### 7/30/2026: Spatial Join error
+UPDATE 7/30/2026: in July, I discovered an error in the spatial join of the extracted land cover data and the data panel. I realized that the landcover data was joined to EAUs by row position, which introduced errors- this only affected landcover (% suitable habitat), which meant that conversion risk (hazard) was incorrectly joined to EAU. This meant that WMD level abundance numbers are fine, but distribution within WMD to EAUs could be incorrect; cost numbers would be correct but incorrectly joined to land cover type.  
+Because of this, I had incorrectly believed that most of the EAUs with missing landcover data were concentrated in Winsom, which is why I removed it- but I discovered that this wasn’t actually the case, there are multiple WMDs with at least a few EAUs missing data.  
+wmd_id             n_ok n_missing total pct_missing 
+
+   <chr>             <int>     <int> <int>       <dbl> 
+1 Fergus Falls         13         4    17        23.5 
+2 Litchfield           26         4    30        13.3 
+3 Windom               69         9    78        11.5 
+4 Morris               32         4    36        11.1 
+5 Benton Lake         121         8   129         6.2 
+6 Bowdoin             113         6   119         5   
+7 Lake Andes           58         3    61         4.9 
+8 Madison              44         2    46         4.3 
+9 Detroit Lakes        36         1    37         2.7 
+ 
+I went back in to the “create EAU script”, and cleaned this up: expect to have 879 EAUs now. 
+
+
+
+
+
+
+## 7/10/2026: Temporal alignment of benefit data
 
 After the initial model run, I realized there was a problem with the temporal alignment of the benefit data with the landcover data (and the decision model itself). The benefit data is as follows:
 

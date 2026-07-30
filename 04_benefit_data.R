@@ -100,14 +100,34 @@ benefit_decadal <- bind_rows(
 
 ##### 3. Match Benefit data into EAU_Panel ####
 
-#FIRST: remove the 4WMDs we are removing from the analysis.
-  #3 from Montana (Benton Lake, Bowdoin, and Northeast Montana) because the 
-  #underlying hydrological data that underpinned the duck abundance estimates performed poorly 
-  #in that region; and a 4th (Winsom) because of a mismatch of spatial extent with the FOREsce 
-  #landcover data. 
+# ── WMD exclusions ───────────────────────────────────────────────────────────
+# Hydrological: the data underpinning the duck abundance estimates performed
+# poorly in these three Montana districts.
+# Coverage: districts where >20% of EAUs fall outside the FOREsce extent are
+# excluded, because allocating the district's full abundance across a heavily
+# truncated denominator inflates apparent parcel-level density.
+COVERAGE_MAX_MISSING_PCT <- 20
 
-# Drop excluded WMDs
-wmd_exclude <- c("Windom", "Benton Lake", "Bowdoin", "Northeast Montana")
+eau_wmd <- read_csv(file.path(DIR_DERIVED, "eau_wmd_lookup.csv"), show_col_types = FALSE)
+
+coverage <- eau_wmd %>%
+  mutate(has_data = eau_id %in% unique(eau_panel$eau_id)) %>%
+  group_by(wmd_id) %>%
+  summarise(n_total = n(), n_ok = sum(has_data),
+            pct_missing = 100 * (1 - n_ok / n_total), .groups = "drop") %>%
+  arrange(desc(pct_missing))
+
+wmd_exclude_hydro    <- c("Benton Lake", "Bowdoin", "Northeast Montana")
+wmd_exclude_coverage <- coverage %>%
+  filter(pct_missing > COVERAGE_MAX_MISSING_PCT) %>% pull(wmd_id)
+wmd_exclude <- union(wmd_exclude_hydro, wmd_exclude_coverage)
+
+cat("  Excluded (hydrological):", paste(wmd_exclude_hydro, collapse = ", "), "\n")
+cat("  Excluded (coverage >", COVERAGE_MAX_MISSING_PCT, "% missing):",
+    paste(wmd_exclude_coverage, collapse = ", "), "\n")
+print(coverage %>% filter(pct_missing > 0) %>% as.data.frame(), row.names = FALSE)
+
+stopifnot(setequal(wmd_exclude_coverage, "Fergus Falls"))
 
 # Remove excluded WMDs from the base panel before joining benefit data
 eau_panel <- eau_panel %>%
@@ -175,6 +195,9 @@ data_panel <- eau_panel_alloc
 
 # Number of EAUs after WMD exclusion, derived from the filtered base panel
 n_eaus_expected <- n_distinct(eau_panel$eau_id)
+
+"Expected EAU count after exclusions" = n_distinct(eau_panel$eau_id) == 879L
+"Expected WMD count after exclusions" = n_distinct(eau_panel$wmd_id) == 20L
 
 # Rows per EAU breaks down as follows:
 #   - 1 baseline row for 2020 (rcp = "baseline", gcm = "baseline")
