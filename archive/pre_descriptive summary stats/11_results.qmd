@@ -78,21 +78,12 @@ set_flextable_defaults(font.family = "Latin Modern Roman")
 
 OUT_DIR    <- file.path("output_figs")
 
-print(getwd()); print(file.exists(file.path(OUT_DIR, "run_metadata.json")))
-
 ## run metadata (written by 10_results_assets.R) --------------------------------
 meta <- tryCatch(
-  jsonlite::read_json(file.path(OUT_DIR, "run_metadata.json"), simplifyVector = TRUE),
-  error = function(e) NULL)
+  jsonlite::read_json(file.path(OUT_DIR, "run_metadata.json"), simplifyVector = TRUE))
 gen_date  <- if (!is.null(meta$generated_date)) meta$generated_date else "unknown"
 maps_ok   <- file.exists(file.path(OUT_DIR, "foresight_difference.png"))
 maps_missing <- !maps_ok   # referenced by the fallback note (avoids '!expr !x' YAML clash)
-
-## descriptive-summary assets (written by the same script, but from the INPUTS panel,
-## so they exist independently of whether 08 persisted a schedule) ---------------
-desc_ok       <- file.exists(file.path(OUT_DIR, "fig_benefit_ribbon.png"))
-desc_maps_ok  <- file.exists(file.path(OUT_DIR, "map_benefit_2020_2100.png"))
-desc_missing  <- !desc_ok
 
 ## formatters (presentation lives here, not in the asset script) ----------------
 fmt_pct <- function(x) vapply(x, function(v) {
@@ -208,23 +199,7 @@ caps <- list(
     "here and prevents duck-pair loss; red: myopic invests here instead, securing",
     "absolute conservation benefit but relatively less than rolling. grey: no difference",
     "Coloured cells sum to the value-added gap. Colour is capped",
-    "symmetrically at the 98th percentile of |\u0394V|."),
-  fig_benefit_map = paste(
-    "**Duck-pair abundance across the PPR: 2020 baseline vs. 2100 under RCP 8.5 dry.**",
-    "The 2020 panel is the shared cross-scenario baseline common to all five scenarios",
-    "\u2014 only the 2100 panel is scenario-specific. One tile = one EAU; outlines are WMDs."),
-  fig_benefit_ribbon = paste(
-    "**Per-EAU duck-pair abundance to 2100, by scenario.** Solid line = median",
-    "across EAUs; dark band = interquartile range; light band = 10th\u201390th percentile.",
-    "Bands show spatial variability across EAUs within a given scenario-year."),
-  fig_risk_box = paste(
-    "**Per-period conversion risk across EAUs, by decade and emissions scenario.**",
-    "Box = median and IQR; whiskers = 1.5 \u00d7 IQR; horizontal tick = maximum;",
-    "points = individual EAUs. The number above each box is the % of EAUs sitting at the",
-    "background conversion floor."),
-  fig_cost_map = paste(
-    "**Acquisition cost per hectare, 2020 USD.** Raw dollars, no log transform, grouped",
-    "into six equal-count classes so contrast is spread across the region.")
+    "symmetrically at the 98th percentile of |\u0394V|.")
 )
 ```
 
@@ -288,61 +263,23 @@ periods** and **5 scenarios** (RCP 4.5/8.5 × wet/dry, plus a stationary null).
 ## Descriptive Summary
 
 ### Duck distribution
-Consistent with other studies, duck abundance is higher in the western portion of the PPR than the eastern portion. This overall distribution pattern continues through 2100. 
-```{r}
-#| label: fig-benefit-map
-#| fig-cap: !expr caps$fig_benefit_map
-#| out-width: 100%
-#| eval: !expr desc_maps_ok
-knitr::include_graphics(file.path(OUT_DIR, "map_benefit_2020_2100.png"))
-```
-In all scenarios, duck abundance is predicted to decline across the PPR by 2100, although wet scenarios fare better than dry scenarios.
-```{r}
-#| label: fig-benefit-ribbon
-#| fig-cap: !expr caps$fig_benefit_ribbon
-#| out-width: 100%
-#| eval: !expr desc_ok
-knitr::include_graphics(file.path(OUT_DIR, "fig_benefit_ribbon.png"))
-```
+Consistent with other studies, duck abundance is higher in the western portion of the PPR than the eastern portion [xxx]. In all scenarios, duck abundance is predicted to decline across the PPR by 2100, although wet scenarios fare better than dry scenarios.
 
-{{< pagebreak >}}
+[insert benefit map]
+
+[insert ribbon panel]
 
 
 ### Risk
 Risk of conversion across all EAUs is heavily skewed, with the vast majority of EAUs showing a nearly zero per period conversion risk. There is a (currently undiagnosed) drop in 2050 in per period conversion risk. 
 
-```{r}
-#| label: fig-risk-box
-#| fig-cap: !expr caps$fig_risk_box
-#| out-width: 100%
-#| eval: !expr desc_ok
-knitr::include_graphics(file.path(OUT_DIR, "fig_risk_box.png"))
-```
-
-{{< pagebreak >}}
+[insert risk boxplot]
 
 
 ### Cost
 Acquisition cost per hectare. High cost parcels are concentrated in the eastern portion of the PPR. 
 
-```{r}
-#| label: fig-cost-map
-#| fig-cap: !expr caps$fig_cost_map
-#| out-width: 85%
-#| eval: !expr desc_maps_ok
-knitr::include_graphics(file.path(OUT_DIR, "map_cost_binned.png"))
-```
-
-```{r}
-#| label: no-desc-note
-#| eval: !expr desc_missing
-#| results: asis
-cat("*(Descriptive figures not generated \u2014 the inputs panel was absent when",
-    "10_results_assets.R last ran. Run 06_cost_data.R, rerun the asset script,",
-    "then re-render.)*")
-```
-
-{{< pagebreak >}}
+[insert cost map]
 
 
 
@@ -470,30 +407,7 @@ knitr::include_graphics(file.path(OUT_DIR, "prevented_loss_diff.png"))
      them. They still use the house table style and auto-number after the others. -->
 ```
 
-### 7/30/2026: Spatial Join error
-UPDATE 7/30/2026: in July, I discovered an error in the spatial join of the extracted land cover data and the data panel. I realized that the landcover data was joined to EAUs by row position, which introduced errors- this only affected landcover (% suitable habitat), which meant that conversion risk (hazard) was incorrectly joined to EAU. This meant that WMD level abundance numbers are fine, but distribution within WMD to EAUs could be incorrect; cost numbers would be correct but incorrectly joined to land cover type.  
-Because of this, I had incorrectly believed that most of the EAUs with missing landcover data were concentrated in Winsom, which is why I removed it- but I discovered that this wasn’t actually the case, there are multiple WMDs with at least a few EAUs missing data.  
-wmd_id             n_ok n_missing total pct_missing 
-
-   <chr>             <int>     <int> <int>       <dbl> 
-1 Fergus Falls         13         4    17        23.5 
-2 Litchfield           26         4    30        13.3 
-3 Windom               69         9    78        11.5 
-4 Morris               32         4    36        11.1 
-5 Benton Lake         121         8   129         6.2 
-6 Bowdoin             113         6   119         5   
-7 Lake Andes           58         3    61         4.9 
-8 Madison              44         2    46         4.3 
-9 Detroit Lakes        36         1    37         2.7 
- 
-I went back in to the “create EAU script”, and cleaned this up: expect to have 879 EAUs now. 
-
-
-
-
-
-
-## 7/10/2026: Temporal alignment of benefit data
+## Temporal alignment of benefit data
 
 After the initial model run, I realized there was a problem with the temporal alignment of the benefit data with the landcover data (and the decision model itself). The benefit data is as follows:
 
