@@ -280,6 +280,9 @@ rows_per_eau <- eau_panel %>%
 bad_row_counts <- rows_per_eau %>% filter(n_rows_eau != expected_rows_per_eau)
 
 # Check 4: EAU counts per WMD should match the lookup table
+eaus_per_wmd_panel <- eau_panel %>%
+  distinct(eau_id, wmd_id) %>%
+  count(wmd_id, name = "n_eaus_panel")
 
 eaus_per_wmd_lookup <- eau_wmd %>%
   filter(cell_id %in% lu_cells) %>%

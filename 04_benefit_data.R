@@ -196,8 +196,6 @@ data_panel <- eau_panel_alloc
 # Number of EAUs after WMD exclusion, derived from the filtered base panel
 n_eaus_expected <- n_distinct(eau_panel$eau_id)
 
-"Expected EAU count after exclusions" = n_distinct(eau_panel$eau_id) == 879L
-"Expected WMD count after exclusions" = n_distinct(eau_panel$wmd_id) == 20L
 
 # Rows per EAU breaks down as follows:
 #   - 1 baseline row for 2020 (rcp = "baseline", gcm = "baseline")

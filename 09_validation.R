@@ -45,7 +45,7 @@
 #
 # WHY a tiny synthetic instance for P1.  Brute force enumerates (n_t+1)^n_eau
 # assignments, so it is only tractable for a handful of EAUs. The real panel
-# (n_eau = 841) is far beyond enumeration — P1 certifies the FORMULATION on a small
+# (n_eau = 879) is far beyond enumeration — P1 certifies the FORMULATION on a small
 # instance; P2/P3/P5 then exercise the same solver on the real data.
 # ══════════════════════════════════════════════════════════════════════════════
 

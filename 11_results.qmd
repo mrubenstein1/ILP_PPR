@@ -250,7 +250,7 @@ The three models acquire land period by period (decadal steps, 2020–2100) unde
   foresighted benchmark. Uses Gurobi solver (academic license). 
 
 The spatial unit is the **EAU** (Equal Area Unit, ~282 km²). After dropping 4 Wetland
-Management Districts, the analysis uses **841 EAUs across 20 WMDs**, over **9 decadal
+Management Districts, the analysis uses **879 EAUs across 20 WMDs**, over **9 decadal
 periods** and **5 scenarios** (RCP 4.5/8.5 × wet/dry, plus a stationary null).
 
 # Data Sources
@@ -278,7 +278,7 @@ periods** and **5 scenarios** (RCP 4.5/8.5 × wet/dry, plus a stationary null).
 
 - **Budget**: set to a scalable amount based on a number of "median priced" EAUs per period. currently set to 5. 
 
-- **Discount Factor**: 0.95 annual 
+- **Discount Factor**: 0.95 decadal  
 
 {{< pagebreak >}}
 
@@ -351,7 +351,7 @@ cat("*(Descriptive figures not generated \u2014 the inputs panel was absent when
 
 This table compares the total benefit secured across the landscape (2020-2100) via three different acquisition policies (rolling, myopic, and greedy) with a "do-nothing" baseline scenario in which no parcels are acquired. All acquisition policies outperform the do-nothing baseline under climate change scenarios; there is no improvement over the do-nothing baseline under stationarity due to conversion risk set to near zero. 
 
-The rolling policy outperforms the myopic and greedy policies under all climate scenarios, consistent with our expectations that an acquisition policy with foresight should outperform a policy with no or limited foresight. The absolute improvement of any acquisition policy, however, is small: at best, the rolling policy secures improvement over baseline of less than 1%. I believe this is due to a low conversion risk: in the landscape as currently described, conversion risk is quite low (median = 0.0000361%), meaning the additional benefit secured through acquisitions (even the optimal/rolling model) is comparatively low. In addition, these results are from the n=5 budget scenario, in which the decision maker can only acquire 5 median-priced parcels per period (~45-65 parcels total), so only 7% of parcels are ever acquired. The value of any acquisition policy over baseline would presumably increase with a more generous budget. 
+The rolling policy outperforms the myopic and greedy policies under all climate scenarios, consistent with our expectations that an acquisition policy with foresight should outperform a policy with no or limited foresight. The absolute improvement of any acquisition policy, however, is small: at best, the rolling policy secures improvement over baseline of less than 1%. I believe this is due to a low conversion risk: in the landscape as currently described, conversion risk is quite low  meaning the additional benefit secured through acquisitions (even the optimal/rolling model) is comparatively low.
 
 ```{=latex}
 \needspace{13\baselineskip}   % keep this whole table on one page (moves to next page if it won't fit)
@@ -369,7 +369,7 @@ style_grouped_table(
 
 This table compares the gap between total benefit secured across the landscape (2020-2100) in the greedy or myopic policy as compared to the rolling policy. The rolling policy is used as the provably near-optimal benchmark (MIP gap 0.01% across all rolling solves); this table presents the gap in cumulative duck pairs conserved under greedy/myopic policies as compared to that near-optimal benchmark. 
 
-As expected, the greedy policy displays a larger gap than the myopic policy under all climate scenarios. Myopic underperforms optimal by approx. %12-%14; greedy underperforms optimal at around ~42-45%. Under stationarity, there is virtually no difference (as we would expect). 
+As expected, the greedy policy displays a larger gap than the myopic policy under all climate scenarios. Myopic underperforms optimal by approx. %20-22; greedy underperforms optimal at around ~30%. Under stationarity, there is virtually no difference (as we would expect). 
 
 This "value added gap" becomes our metric of greatest interest: because the absolute value of any acquisition policy in this landscape is relatively low, this metric helps demonstrate the value of foresight in acquisition policy. My interpretation: As compared to the best possible acquisition policy, how well does the greedy or myopic policy perform? How much conservation does a suboptimal acquisition policy leave on the table?
 
@@ -471,22 +471,15 @@ knitr::include_graphics(file.path(OUT_DIR, "prevented_loss_diff.png"))
 ```
 
 ### 7/30/2026: Spatial Join error
-UPDATE 7/30/2026: in July, I discovered an error in the spatial join of the extracted land cover data and the data panel. I realized that the landcover data was joined to EAUs by row position, which introduced errors- this only affected landcover (% suitable habitat), which meant that conversion risk (hazard) was incorrectly joined to EAU. This meant that WMD level abundance numbers are fine, but distribution within WMD to EAUs could be incorrect; cost numbers would be correct but incorrectly joined to land cover type.  
-Because of this, I had incorrectly believed that most of the EAUs with missing landcover data were concentrated in Winsom, which is why I removed it- but I discovered that this wasn’t actually the case, there are multiple WMDs with at least a few EAUs missing data.  
-wmd_id             n_ok n_missing total pct_missing 
+I discovered an error in the spatial join of the extracted land cover data and the model's data panel. I realized that the landcover data was joined to EAUs by row position, which introduced errors- land classification (% suitable habitat) was joined to the wrong EAUs. Conversion risk (hazard) was the variable most affected- the trans_prob were not attached to the correct spatial unit. Because duck density is distributed according to % suitable, it also meant that duck distributions were incorrect- but the scale of this error was mitigated by the fact that WMD-scale determines the absolute amount of duck density. This meant that WMD level abundance numbers are fine, but distribution within WMD to EAUs was incorrect; cost numbers are unaffected. 
 
-   <chr>             <int>     <int> <int>       <dbl> 
-1 Fergus Falls         13         4    17        23.5 
-2 Litchfield           26         4    30        13.3 
-3 Windom               69         9    78        11.5 
-4 Morris               32         4    36        11.1 
-5 Benton Lake         121         8   129         6.2 
-6 Bowdoin             113         6   119         5   
-7 Lake Andes           58         3    61         4.9 
-8 Madison              44         2    46         4.3 
-9 Detroit Lakes        36         1    37         2.7 
- 
-I went back in to the “create EAU script”, and cleaned this up: expect to have 879 EAUs now. 
+Because of this, I had incorrectly believed that most of the EAUs with missing landcover data were concentrated in Winsom, which is why I removed it- but I discovered that this wasn’t actually the case, there are multiple WMDs with at least a few EAUs missing data.  I decided to make a cap of 20% (any WMD missing 20% of EAU land cover data would be excluded); the others have slightly inflated duck numbers in their remaining EAUs. 
+
+A few interesting findings:
+- spatial distribution of duck abundance is now more clearly aligned with McKenna 2026 (good news!)
+- there is now a clearer alignment of duck abundance and LOW acquisitoin cost: this is more consistent with the literature, and also means that greedy starts performing slightly better than before. (gap in value add vs rolling =20%; it was about 40% before)
+- but interestingly, the value added of rolling vs myopic increases: we are now looking at ~20% improvement, not ~15%. 
+
 
 
 

@@ -27,7 +27,7 @@ The three models acquire land period by period (decadal steps, 2020–2100) unde
   foresighted benchmark.
 
 The spatial unit is the **EAU** (Equal Area Unit, ~282 km²). After dropping 4 Wetland
-Management Districts, the analysis uses **841 EAUs across 20 WMDs**, over **9 decadal
+Management Districts, the analysis uses **879 EAUs across 20 WMDs**, over **9 decadal
 periods** and **5 scenarios** (RCP 4.5/8.5 × wet/dry, plus a stationary null).
 
 
