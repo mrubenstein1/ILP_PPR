@@ -118,7 +118,7 @@ FIDELITY_TOL <- 1e-6
 # trivial against ~20 min per pair, and progress goes to a log file instead).
 PARALLEL_BACKEND <- "psock"
 
-N_CORES <- 6L
+N_CORES <- 4L
 
 # ── Scratch space ─────────────────────────────────────────────────────────────
 # terra spills native-resolution intermediates to disk. By default that is R's
@@ -573,8 +573,32 @@ cpu_s  <- sum(vapply(flows, function(d) attr(d, "seconds"), numeric(1)))
 wall_s <- as.numeric(difftime(Sys.time(), t_all, units = "secs"))
 
 flows <- bind_rows(flows) %>%
-  inner_join(cell_to_eau, by = "cell_id") %>%     # by-place join, as in script 03
-  filter(!is.na(ps_t))
+  inner_join(cell_to_eau, by = "cell_id")          # by-place join, as in script 03
+
+# Drop rows lacking ANY flow component, not just ps_t. Filtering on ps_t alone
+# lets through rows where ps_t is present but ps_t1 / prop_lost / prop_gained are
+# NA, which then propagate silently into gross_loss and net_loss and turn every
+# downstream sum() into NA. Report the two categories separately: rows missing
+# ps_t are the expected no-coverage EAUs, whereas rows missing only a partner
+# column are unexpected and worth knowing about.
+n_pre        <- nrow(flows)
+miss_ps_t    <- sum(is.na(flows$ps_t))
+miss_partner <- sum(!is.na(flows$ps_t) &
+                      (is.na(flows$ps_t1) | is.na(flows$prop_lost) |
+                         is.na(flows$prop_gained)))
+
+flows <- flows %>%
+  filter(!is.na(ps_t), !is.na(ps_t1), !is.na(prop_lost), !is.na(prop_gained))
+
+cat(sprintf("\n  Rows: %d joined -> %d retained\n", n_pre, nrow(flows)))
+cat(sprintf("    dropped, no coverage (ps_t NA)      : %d  (expect ~41 per pair)\n",
+            miss_ps_t))
+cat(sprintf("    dropped, partial decomposition      : %d%s\n", miss_partner,
+            if (miss_partner > 0) "  <-- UNEXPECTED, see note below" else ""))
+if (miss_partner > 0)
+  warning(miss_partner, " row(s) had ps_t but were missing another flow component. ",
+          "These are excluded. If the count is more than a handful of edge EAUs, ",
+          "reconcile it before citing sections B-D.", call. = FALSE)
 
 cat(sprintf("\n  Wall clock: %.1f min | summed worker time: %.1f min | speedup %.1fx\n",
             wall_s / 60, cpu_s / 60, cpu_s / max(wall_s, 1e-9)))
@@ -605,10 +629,17 @@ hdr("A. FIDELITY -- does this reproduce the pipeline's own numbers?")
 
 # A1: the stock identity must hold to floating-point precision. If it does not, the
 # flow decomposition is wrong and everything below is void.
-max_resid <- max(abs(metrics$ident_resid), na.rm = TRUE)
-a1 <- max_resid < FIDELITY_TOL
-cat(sprintf("  [%s] stock identity  ps_t1 == ps_t - L + G   (max resid %.2e)\n",
-            ifelse(a1, "PASS", "FAIL"), max_resid))
+#
+# NOTE: this deliberately reports the NA count as well as the max residual. An
+# earlier version used max(..., na.rm = TRUE) alone, which meant any row with a
+# missing flow component was skipped by the very check meant to catch it -- A1
+# reported PASS while broken rows sat in the data and blew up section B. With the
+# filter above, n_resid_na should always be 0; if it is not, A1 FAILS.
+n_resid_na <- sum(is.na(metrics$ident_resid))
+max_resid  <- max(abs(metrics$ident_resid), na.rm = TRUE)
+a1 <- is.finite(max_resid) && max_resid < FIDELITY_TOL && n_resid_na == 0
+cat(sprintf("  [%s] stock identity  ps_t1 == ps_t - L + G   (max resid %.2e, NA rows %d)\n",
+            ifelse(a1, "PASS", "FAIL"), max_resid, n_resid_na))
 
 # A2 / A3: agreement with the panel, if it is available.
 a2 <- a3 <- NA
