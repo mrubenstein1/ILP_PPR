@@ -309,7 +309,7 @@ knitr::include_graphics(file.path(OUT_DIR, "fig_benefit_ribbon.png"))
 
 
 ### Risk
-Risk of conversion across all EAUs is heavily skewed, with the vast majority of EAUs showing a nearly zero per period conversion risk. There is a drop in 2050 in per period conversion risk: this is a function of the FOREsce projection, which frontloads cropland through 2050, at which point conversions decline.
+Risk of conversion across all EAUs is heavily skewed, with the vast majority of EAUs showing a nearly zero per period conversion risk. There is a drop in 2050 in per period conversion risk: this is a function of the FOREsce projection, which frontloads cropland conversion through 2050, at which point conversions decline.
 
 ```{r}
 #| label: fig-risk-box
@@ -480,6 +480,50 @@ A few interesting findings:
 - there is now a clearer alignment of duck abundance and LOW acquisitoin cost: this is more consistent with the literature, and also means that greedy starts performing slightly better than before. (gap in value add vs rolling =20%; it was about 40% before)
 - but interestingly, the value added of rolling vs myopic increases: we are now looking at ~20% improvement, not ~15%. 
 
+### 8/31/2026: Conversion Risk
+
+# Net vs Loss Habitat loss:
+Delving in to my calculations of how I quantify conversion risk, I realized that I was using net rather than gross habitat loss- this was not conceptually consistent with what I presented, which I intended to be the proportion of suitable habitat in time t that was lost by time t+1 (a flow). Instead, I had calculated the difference between the stock of suitable habitat in time t - t+1, which could be altered by any gains in suitable habitat. 
+
+I changed the calculations to see how this would affect the estimate of conversion risk, and it was fairly substantial- there is a fair amount of habitat recovery in the FOREsce models, so some of those habitat gains were concealing real habitat losses. The table below compares the net vs gross habitat loss rate (gross > net in all decades but particularly mid-century). In addition, the use of the gross metric in the first model run meant that some EAUs had a "positive" habitat loss (i.e., overall habitat gain), which I corrected for by imposing a data-derived epsilon (floor). With the net metric, that is no longer needed (net loss >= 0). The table also shows the percent of EAUs that were "censored" by the artifical floor (i.e., which really had habitat loss but which was hidden by habitat gain). 
+
+| Decade | gross | net | ratio | % of EAUs censored |
+|---|---|---|---|---|
+| 2020–2040 | ~0.018 | ~0.017 | 1.02–1.27 | 0.5–7% |
+| **2050–2070 (4.5)** | ~0.002 | 0.0009 → **−0.0003** | 2.2 → 4.5 → **NA** | **14–17%** |
+| **2050–2070 (8.5)** | ~0.002 | **−0.0033, −0.0009, −0.0013** | **all NA** | **16–24%** |
+| 2080–2090 | ~0.003 | ~0.002 | ~1.27 | ~4% |
+
+
+
+
+
+
+
+# Reference: Literature-derived
+- Doherty et al 2018:  
+  - 0.57% per year wetland loss in the Prairie Coteau ecoregion in Minnesota 
+  - 1.33% of grasslands were lost per year during 1979–1997 across the entire United States Prairie Pothole Region 
+
+- Rashford et al 2011:  
+  - 1.33% of grasslands were lost (converted to cultivated crops) per year during 1979–1997 across the entire United States Prairie Pothole Region 
+
+- Oslund et al 2011: 
+  - Wetland change in MN from 1980-2007: 4.3% loss in total wetland area across MN PPR.  
+  - Kemnick et al 2023: Wetland drainage rates: upper & lower bound (0.57% and 0.09%/year); from Dahl, 2014; Oslund et al., 2010 
+  
+Compare this to current net habitat proxy rates:
+  - mean: 0.47%
+  - median: .0000361%
+  - max: 12%
+
+Expectation: a uniform conversion risk estimate will flatten out regional differences, and close the gap between myopic and rolling (it essentially confirms myopic assumption of stationarity).
+
+Potential path forward: take an approach similar to Kemnick et al 2023: use literature-derived estimates as a landscape total, and use landscape characteristics (i.e., wetland size, surrounding cropland) as a way to rank relatively.
+
+Kemink, Kaylan M., et al. "Quantifying population-level conservation impacts for a perpetual conservation program on private land." Journal of Environmental Management 345 (2023): 118748.
+
+{{< pagebreak >}}
 
 
 
@@ -562,32 +606,6 @@ style_grouped_table(align_gap, groups_gap, subs_gap,
 
 {{< pagebreak >}}
 
-# Conversion Risk
-
-## Uniform, Literature-derived
-- Doherty et al 2018:  
-  - 0.57% per year wetland loss in the Prairie Coteau ecoregion in Minnesota 
-  - 1.33% of grasslands were lost per year during 1979–1997 across the entire United States Prairie Pothole Region 
-
-- Rashford et al 2011:  
-  - 1.33% of grasslands were lost (converted to cultivated crops) per year during 1979–1997 across the entire United States Prairie Pothole Region 
-
-- Oslund et al 2011: 
-  - Wetland change in MN from 1980-2007: 4.3% loss in total wetland area across MN PPR.  
-  - Kemnick et al 2023: Wetland drainage rates: upper & lower bound (0.57% and 0.09%/year); from Dahl, 2014; Oslund et al., 2010 
-  
-Compare this to current net habitat proxy rates:
-  - mean: 0.47%
-  - median: .0000361%
-  - max: 12%
-
-Expectation: a uniform conversion risk estimate will flatten out regional differences, and close the gap between myopic and rolling (it essentially confirms myopic assumption of stationarity).
-
-Potential path forward: take an approach similar to Kemnick et al 2023: use literature-derived estimates as a landscape total, and use landscape characteristics (i.e., wetland size, surrounding cropland) as a way to rank relatively.
-
-Kemink, Kaylan M., et al. "Quantifying population-level conservation impacts for a perpetual conservation program on private land." Journal of Environmental Management 345 (2023): 118748.
-
-{{< pagebreak >}}
 
 
 # Wet/dry scenarios for land use
