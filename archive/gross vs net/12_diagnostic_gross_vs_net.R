@@ -24,18 +24,6 @@
 # which requires going back to pixel level, because the aggregation in script 02
 # nets them irreversibly -- and quantifies the difference.
 #
-# ── SCOPE ─────────────────────────────────────────────────────────────────────
-# Every statistic REPORTED in sections B-E is restricted to the EAUs that enter
-# the model — the 879 in the panel, not the ~1,210 in the lookup or the 1,169 with
-# land-cover coverage. Rates computed over the larger sets describe a landscape the
-# ILP never sees, including the WMDs dropped for missing land cover, so they cannot
-# be quoted against model results. The panel is therefore a required input.
-#
-# The excluded EAUs are still COMPUTED and are kept in the long CSV, marked by the
-# in_model column. Rasters are cropped to the full shared mask either way, so this
-# costs nothing at run time, and it means a change to the WMD exclusion rule can be
-# explored with a filter() instead of another raster run.
-#
 # ── WHAT IT REPORTS ───────────────────────────────────────────────────────────
 #   A. FIDELITY   — does the recomputed prop_suitable reproduce the panel's? Does
 #                   the recomputed net reproduce the panel's pre-floor trans_prob?
@@ -44,8 +32,6 @@
 #                   therefore floored to epsilon and enter the model as risk-free?
 #   C. MAGNITUDE  — gross vs net distributions, by decade and RCP.
 #   D. ANOMALY    — probe for the undiagnosed 2050 dip in per-period risk.
-#   E. FINDINGS   — the headline table, per decade x scenario and averaged across
-#                   scenarios, written to CSV rather than only to the console.
 #
 # ── INPUTS ────────────────────────────────────────────────────────────────────
 #   input_data/prairie_potholes_gcam_ref_rcp45/*.tif
@@ -53,14 +39,11 @@
 #   input_data/prairie_potholes_gcam_ref_meanclim/..._meanclim_2020.tif
 #   derived_data/foresce_eau_shared_mask.tif      (script 02)
 #   derived_data/eau_wmd_lookup.csv               (script 01)
-#   derived_data/data_panel.rds                   (script 06)  [REQUIRED: defines
-#                                                  the model EAU set, and feeds A2/A3]
+#   derived_data/data_panel.rds                   (script 06)  [for section A only]
 #
 # ── OUTPUTS ── all under diag_gross_v_net/ ────────────────────────────────────
-#   diag_gross_v_net/diag_gross_vs_net.csv           long: eau_id x year x rcp
-#   diag_gross_v_net/diag_summary.csv                per-decade distributional summary
-#   diag_gross_v_net/diag_findings_by_scenario.csv   headline table, rcp x decade
-#   diag_gross_v_net/diag_findings_scenario_mean.csv headline table, averaged over rcp
+#   diag_gross_v_net/diag_gross_vs_net.csv       long: eau_id x year x rcp
+#   diag_gross_v_net/diag_summary.csv            the per-decade summary table
 #   diag_gross_v_net/diag_gross_vs_net_scatter.png   (DRAW_FIGS)
 #
 # ── RUNTIME ───────────────────────────────────────────────────────────────────
@@ -208,32 +191,6 @@ cat(sprintf("  EAUs in lookup: %d\n", nrow(eau_wmd)))
 # cell_id -> eau_id. Script 03 joins land cover to the panel BY CELL NUMBER
 # (the post-7/30 by-place join); we reproduce that keying exactly.
 cell_to_eau <- eau_wmd %>% select(cell_id, eau_id, wmd_id)
-
-# EAU area in hectares, taken from the grid's OWN cell size rather than a constant
-# typed in here. The two disagree at present: the raster resolution implies
-# ~342.8 km2 per EAU while the project write-up says ~282 km2 (70,000 acres). That
-# discrepancy is unresolved, so hectare figures below are derived from the raster
-# actually being read and will move if the grid is rebuilt -- which is the correct
-# failure mode. Rates are unaffected either way (equal-area cells cancel).
-EAU_AREA_HA <- res(aoi_mask)[1] * res(aoi_mask)[2] / 1e4
-cat(sprintf("  EAU cell area: %.1f ha (%.1f km2), derived from grid resolution\n",
-            EAU_AREA_HA, EAU_AREA_HA / 100))
-
-# ── 0a. The model EAU set ─────────────────────────────────────────────────####
-#
-# The lookup carries every EAU intersecting a WMD; the panel carries only those
-# surviving script 03's WMD exclusion. Reporting diagnostic rates over the lookup
-# set would describe a landscape the ILP never sees, so the panel is authoritative
-# and is now REQUIRED rather than optional (it previously fed only A2/A3).
-if (!file.exists(PANEL_RDS))
-  stop("Required input not found: ", PANEL_RDS,
-       "\n  Run script 06 first. The panel defines which EAUs enter the model, and ",
-       "every number this script reports is restricted to that set.")
-
-panel      <- readRDS(PANEL_RDS)
-model_eaus <- sort(unique(panel$eau_id))
-cat(sprintf("  EAUs in model panel: %d (of %d in lookup)\n",
-            length(model_eaus), nrow(eau_wmd)))
 
 
 # ── 0b. Scratch-space preflight ───────────────────────────────────────────####
@@ -663,17 +620,7 @@ cat(sprintf("    dropped, partial decomposition      : %d%s\n", miss_partner,
 if (miss_partner > 0)
   warning(miss_partner, " row(s) had ps_t but were missing another flow component. ",
           "These are excluded. If the count is more than a handful of edge EAUs, ",
-          "reconcile it before citing sections B-E.", call. = FALSE)
-
-# Flag model membership rather than dropping. Every REPORTED statistic below is
-# restricted to in_model rows -- a censoring rate over the lookup set would
-# describe a landscape the ILP never sees -- but the excluded rows are computed
-# anyway and kept in the long CSV. The 20% missing-data cap that produced the
-# 20-WMD set is a judgment call and may move; keeping the rows means revisiting it
-# costs a filter() rather than another raster run.
-flows <- flows %>% mutate(in_model = eau_id %in% model_eaus)
-cat(sprintf("    in model panel / retained           : %d / %d\n",
-            sum(flows$in_model), nrow(flows)))
+          "reconcile it before citing sections B-D.", call. = FALSE)
 
 cat(sprintf("\n  Wall clock: %.1f min | summed worker time: %.1f min | speedup %.1fx\n",
             wall_s / 60, cpu_s / 60, cpu_s / max(wall_s, 1e-9)))
@@ -716,44 +663,49 @@ a1 <- is.finite(max_resid) && max_resid < FIDELITY_TOL && n_resid_na == 0
 cat(sprintf("  [%s] stock identity  ps_t1 == ps_t - L + G   (max resid %.2e, NA rows %d)\n",
             ifelse(a1, "PASS", "FAIL"), max_resid, n_resid_na))
 
-# A2 / A3: agreement with the panel. The panel is loaded in section 0 (it defines
-# the model EAU set), so these no longer need a missing-file branch.
-
-# A2 -- recomputed prop_suitable vs the panel's, for the RCP rows (2030+).
-# A mismatch here means this script's raster handling has drifted from script 02
-# (most likely the others = NA vs others = 0 encoding on all-unsuitable EAUs).
-panel_ps <- panel %>%
-  filter(rcp %in% c("45", "85"), year >= 2030) %>%
-  distinct(eau_id, year, rcp, panel_ps = prop_suitable)
-
-cmp_ps <- metrics %>%
-  filter(year >= 2030) %>%
-  distinct(eau_id, year, rcp, ps_t) %>%
-  inner_join(panel_ps, by = c("eau_id", "year", "rcp")) %>%
-  mutate(dev = abs(ps_t - panel_ps))
-
-a2 <- nrow(cmp_ps) > 0 && max(cmp_ps$dev, na.rm = TRUE) < FIDELITY_TOL
-cat(sprintf("  [%s] prop_suitable matches panel      (n = %d, max dev %.2e)\n",
-            ifelse(isTRUE(a2), "PASS", "FAIL"), nrow(cmp_ps),
-            if (nrow(cmp_ps)) max(cmp_ps$dev, na.rm = TRUE) else NA_real_))
-
-# A3 -- recomputed net vs the panel's trans_prob. These agree only where the
-# floor did not bind, so restrict to rows above the floor. Disagreement there
-# would indicate a genuine discrepancy in how 05 differences the series.
-panel_tp <- panel %>%
-  filter(rcp %in% c("45", "85"), year >= 2030, year < 2100) %>%
-  distinct(eau_id, year, rcp, trans_prob)
-
-cmp_tp <- metrics %>%
-  filter(year >= 2030, year < 2100) %>%
-  inner_join(panel_tp, by = c("eau_id", "year", "rcp")) %>%
-  filter(net_loss > 1e-4)                       # comfortably above any epsilon
-a3 <- nrow(cmp_tp) > 0 &&
-  max(abs(cmp_tp$net_loss - cmp_tp$trans_prob), na.rm = TRUE) < 1e-6
-cat(sprintf("  [%s] net reproduces trans_prob        (n = %d, max dev %.2e)\n",
-            ifelse(isTRUE(a3), "PASS", "FAIL"), nrow(cmp_tp),
-            if (nrow(cmp_tp)) max(abs(cmp_tp$net_loss - cmp_tp$trans_prob),
-                                  na.rm = TRUE) else NA_real_))
+# A2 / A3: agreement with the panel, if it is available.
+a2 <- a3 <- NA
+if (file.exists(PANEL_RDS)) {
+  panel <- readRDS(PANEL_RDS)
+  
+  # A2 -- recomputed prop_suitable vs the panel's, for the RCP rows (2030+).
+  # A mismatch here means this script's raster handling has drifted from script 02
+  # (most likely the others = NA vs others = 0 encoding on all-unsuitable EAUs).
+  panel_ps <- panel %>%
+    filter(rcp %in% c("45", "85"), year >= 2030) %>%
+    distinct(eau_id, year, rcp, panel_ps = prop_suitable)
+  
+  cmp_ps <- metrics %>%
+    filter(year >= 2030) %>%
+    distinct(eau_id, year, rcp, ps_t) %>%
+    inner_join(panel_ps, by = c("eau_id", "year", "rcp")) %>%
+    mutate(dev = abs(ps_t - panel_ps))
+  
+  a2 <- nrow(cmp_ps) > 0 && max(cmp_ps$dev, na.rm = TRUE) < FIDELITY_TOL
+  cat(sprintf("  [%s] prop_suitable matches panel      (n = %d, max dev %.2e)\n",
+              ifelse(isTRUE(a2), "PASS", "FAIL"), nrow(cmp_ps),
+              if (nrow(cmp_ps)) max(cmp_ps$dev, na.rm = TRUE) else NA_real_))
+  
+  # A3 -- recomputed net vs the panel's trans_prob. These agree only where the
+  # floor did not bind, so restrict to rows above the floor. Disagreement there
+  # would indicate a genuine discrepancy in how 05 differences the series.
+  panel_tp <- panel %>%
+    filter(rcp %in% c("45", "85"), year >= 2030, year < 2100) %>%
+    distinct(eau_id, year, rcp, trans_prob)
+  
+  cmp_tp <- metrics %>%
+    filter(year >= 2030, year < 2100) %>%
+    inner_join(panel_tp, by = c("eau_id", "year", "rcp")) %>%
+    filter(net_loss > 1e-4)                       # comfortably above any epsilon
+  a3 <- nrow(cmp_tp) > 0 &&
+    max(abs(cmp_tp$net_loss - cmp_tp$trans_prob), na.rm = TRUE) < 1e-6
+  cat(sprintf("  [%s] net reproduces trans_prob        (n = %d, max dev %.2e)\n",
+              ifelse(isTRUE(a3), "PASS", "FAIL"), nrow(cmp_tp),
+              if (nrow(cmp_tp)) max(abs(cmp_tp$net_loss - cmp_tp$trans_prob),
+                                    na.rm = TRUE) else NA_real_))
+} else {
+  cat("  [SKIP] panel not found -- A2/A3 skipped. Run script 06 to enable them.\n")
+}
 
 if (!a1)
   stop("Stock identity failed. The flow decomposition is not sound -- stop and ",
@@ -767,13 +719,7 @@ if (isFALSE(a2))
 # ══ B. CENSORING ═════════════════════════════════════════════════════════════####
 hdr("B. CENSORING -- real loss that the net metric erases")
 
-# The reporting frame. EVERY statistic in sections B-E, and the figure, derives
-# from this, so the restriction is applied once here rather than repeated at each
-# use -- which is what keeps a rate like pct_eaus_censored describing the modelled
-# landscape and nothing else. Section A is deliberately NOT restricted: A1 tests
-# the raster decomposition itself and is more sensitive over all rows, and A2/A3
-# already restrict themselves by inner-joining the panel.
-nonterm <- metrics %>% filter(in_model, year < 2100)
+nonterm <- metrics %>% filter(year < 2100)
 
 cens <- nonterm %>%
   summarise(
@@ -888,7 +834,7 @@ print(by_decade %>%
 # signature and is a cheap thing to rule out.
 cat("\n  Consecutive-year correlation of prop_suitable (1.0000 => identical layers):\n\n")
 for (sfx in unique(metrics$rcp)) {
-  wide <- metrics %>% filter(in_model, rcp == sfx) %>%
+  wide <- metrics %>% filter(rcp == sfx) %>%
     distinct(eau_id, year, ps_t) %>%
     pivot_wider(names_from = year, values_from = ps_t) %>%
     select(-eau_id)
@@ -901,111 +847,22 @@ for (sfx in unique(metrics$rcp)) {
 }
 
 
-# ══ E. FINDINGS OVERVIEW ═════════════════════════════════════════════════════####
-hdr("E. FINDINGS OVERVIEW -- the headline table")
-
-# Rates here are AREA-WEIGHTED: sum(prop_lost) / sum(ps_t), i.e. of all the habitat
-# standing at t across the modelled landscape, what fraction is gone by t+1.
-#
-# This is NOT the gross_mean in section C, which is the unweighted mean of per-EAU
-# ratios and lets a nearly habitat-free EAU with a large proportional loss count as
-# heavily as a habitat-rich one. The two differ materially (roughly 0.84% vs 0.74%
-# per decade on the 2026-08-03 run). The area-weighted form is the landscape rate,
-# and it is the one comparable to literature figures, so it is what this table
-# reports. Both are kept: section C for the distribution, section E for the totals.
-#
-# HECTARES use EAU_AREA_HA, derived in section 0 from the grid's own cell size.
-# prop_lost is a fraction of an EAU's TOTAL area, so the product is hectares
-# directly, with no further rescaling.
-
-findings_by_scenario <- nonterm %>%
-  group_by(rcp, year) %>%
-  summarise(
-    n_eau           = n_distinct(eau_id),
-    habitat_ha      = sum(ps_t)        * EAU_AREA_HA,
-    ha_lost_gross   = sum(prop_lost)   * EAU_AREA_HA,
-    ha_gained       = sum(prop_gained) * EAU_AREA_HA,
-    gross_loss_rate = sum(prop_lost) / sum(ps_t),
-    net_loss_rate   = sum(prop_lost - prop_gained) / sum(ps_t),
-    pct_eaus_censored = 100 * mean(censored),
-    .groups = "drop"
-  ) %>%
-  mutate(
-    ha_lost_net = ha_lost_gross - ha_gained,
-    # Hectares of real conversion the net metric drops. Identically equal to the
-    # gained area, since netting subtracts exactly G.
-    ha_missed   = ha_gained,
-    # Share of the true conversion rate that netting removes, = G/L. Bounded in
-    # [0,100] while net >= 0, and ABOVE 100 wherever gain outruns loss and the net
-    # rate goes negative. That regime is real in this data (mid-century RCP 8.5),
-    # not an error, so the value is left uncapped rather than clamped -- a >100%
-    # entry is the signal that the net metric has inverted the sign of the hazard.
-    pct_gross_missed = 100 * ha_missed / ha_lost_gross
-  ) %>%
-  select(rcp, year, n_eau, habitat_ha,
-         gross_loss_rate, net_loss_rate, pct_gross_missed,
-         ha_lost_gross, ha_lost_net, ha_missed, pct_eaus_censored)
-
-# Cross-scenario version. This is the straight mean of the two per-scenario rows,
-# which is what "averaged across scenarios" asks for. Note it is a mean OF ratios
-# for the two rate columns, not a ratio of pooled sums; the two differ only through
-# the small difference in standing habitat between RCPs, but they are not the same
-# quantity and the rate columns should not be re-derived from the hectare columns
-# in this table.
-findings_scenario_mean <- findings_by_scenario %>%
-  group_by(year) %>%
-  summarise(across(c(n_eau, habitat_ha, gross_loss_rate, net_loss_rate,
-                     pct_gross_missed, ha_lost_gross, ha_lost_net, ha_missed,
-                     pct_eaus_censored), mean),
-            .groups = "drop")
-
-fmt_findings <- function(d) {
-  d %>%
-    mutate(across(c(gross_loss_rate, net_loss_rate), ~ round(.x, 5)),
-           across(c(pct_gross_missed, pct_eaus_censored), ~ round(.x, 1)),
-           across(c(habitat_ha, ha_lost_gross, ha_lost_net, ha_missed),
-                  ~ round(.x, 0))) %>%
-    as.data.frame()
-}
-
-cat("  Per decade x scenario:\n\n")
-print(fmt_findings(findings_by_scenario), row.names = FALSE)
-
-cat("\n  Averaged across scenarios:\n\n")
-print(fmt_findings(findings_scenario_mean), row.names = FALSE)
-
-if (any(findings_by_scenario$pct_gross_missed > 100))
-  cat(sprintf(paste0("\n  NOTE: pct_gross_missed exceeds 100 in %d cell(s). There, ",
-                     "restoration outruns\n        conversion and the net rate is ",
-                     "NEGATIVE -- the model is told those EAUs\n        face no ",
-                     "conversion risk at all despite real habitat loss.\n"),
-              sum(findings_by_scenario$pct_gross_missed > 100)))
-
-
 # ══ SAVE ═════════════════════════════════════════════════════════════════════####
 hdr("Saving")
 
 out_long <- metrics %>%
-  select(eau_id, wmd_id, cell_id, year, rcp, in_model,
+  select(eau_id, wmd_id, cell_id, year, rcp,
          ps_t, ps_t1, prop_lost, prop_gained,
          gross_loss, gross_gain, net_loss, censored, understated) %>%
   arrange(rcp, year, eau_id)
 
-f_long  <- file.path(DIR_DIAG, sprintf("diag_gross_vs_net%s.csv",           RUN_TAG))
-f_summ  <- file.path(DIR_DIAG, sprintf("diag_summary%s.csv",                RUN_TAG))
-f_find  <- file.path(DIR_DIAG, sprintf("diag_findings_by_scenario%s.csv",   RUN_TAG))
-f_findm <- file.path(DIR_DIAG, sprintf("diag_findings_scenario_mean%s.csv", RUN_TAG))
+f_long <- file.path(DIR_DIAG, sprintf("diag_gross_vs_net%s.csv", RUN_TAG))
+f_summ <- file.path(DIR_DIAG, sprintf("diag_summary%s.csv",      RUN_TAG))
 
-# Written unrounded: rounding is for the console only, so the CSVs stay usable as
-# inputs to the results scripts without silently losing precision.
-write_csv(out_long,               f_long)
-write_csv(by_decade,              f_summ)
-write_csv(findings_by_scenario,   f_find)
-write_csv(findings_scenario_mean, f_findm)
+write_csv(out_long,  f_long)
+write_csv(by_decade, f_summ)
 cat(sprintf("  %s  (%d rows)\n", f_long, nrow(out_long)))
 cat(sprintf("  %s\n", f_summ))
-cat(sprintf("  %s\n", f_find))
-cat(sprintf("  %s\n", f_findm))
 
 
 # ── Figures (optional) ────────────────────────────────────────────────────####

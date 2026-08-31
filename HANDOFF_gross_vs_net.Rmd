@@ -1,0 +1,519 @@
+---
+title: "Conversion-Risk Diagnostic: Gross vs Net — Handoff"
+subtitle: "PPR Acquisition Policy Under Nonstationarity"
+author: "Session summary for a future AI agent"
+date: "2026-08-03"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    toc_float: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, eval = FALSE)
+```
+
+# How to use this document
+
+This is a **handoff record**, not a runnable analysis. All chunks are
+`eval = FALSE`. It summarises one working session (2026-08-03) whose purpose was
+to diagnose whether the conversion-risk variable in this project measures what it
+is supposed to measure.
+
+**The short answer: it does not, and the diagnostic quantifies by how much.**
+
+Read §2 for the finding, §5 before touching the raster code, and §7 for what is
+still open.
+
+---
+
+# 1. Project context
+
+Graduate thesis project asking whether accounting for non-stationarity improves
+land-acquisition decisions for waterfowl conservation in the U.S. Prairie Pothole
+Region.
+
+Three policies acquire parcels decade by decade (2020–2100) under a budget
+constraint (5 median-priced EAUs per period, no rollover):
+
+| Policy | Foresight | Notes |
+|---|---|---|
+| Greedy | None | Rank by current benefit/cost, buy down the list |
+| Myopic ILP | Fabricated stationary future | Freezes current benefit + hazard, re-solves each decade |
+| Rolling-horizon ILP | True projected trajectories | Near-optimal benchmark; Gurobi, MIP gap ~0.01% |
+
+Acquisition value is expected loss prevented:
+
+$$V_{i,\tau} = \sum_{t=\tau}^{T} \delta^t \, b_{i,t} \, (1 - S_{i,t})$$
+
+**Dimensions:** 879 EAUs across 20 WMDs (after dropping WMDs missing >20% of EAU
+land-cover data), 9 decadal periods, 5 scenarios (RCP 4.5/8.5 × wet/dry + a
+stationary null). Discount factor 0.95 per decade.
+
+**Grid facts established this session** (worth knowing before any raster work):
+
+- EAU grid: 46 × 85 = 3,910 cells at **18,514 m** resolution
+- `scf` = 380,834 native FOREsce pixels per EAU cell
+- 1,210 EAUs in the lookup; **1,169** have land-cover coverage; **879** survive
+  into the panel after WMD drops
+- Native raster ≈ 1.49e9 pixels ≈ 1.4 GB per INT1U layer
+
+## 1.1 Pipeline
+
+| Script | Role |
+|---|---|
+| `00_setup.R` | Paths, `HAS_SPATIAL`, `DIR_DERIVED`, `DIR_FIGS` |
+| `01_create_EAUs.R` | EAU grid, `eau_wmd_lookup.csv` |
+| `02_EAU_prop_suitable.R` | `prop_suitable` per EAU-year from FOREsce; `foresce_eau_shared_mask.tif` |
+| `03_create_data_panel.R` | Panel assembly, by-cell-number join, wet/dry duplication, stationary rows |
+| `04_benefit_data.R` | McKenna WMD abundance distributed to EAUs by habitat share |
+| `05_risk_of_loss.R` | **`trans_prob`** — the variable under investigation |
+| `06_cost_data.R` | Nolte land values + 2%/yr |
+| `07_ilp_core.R` | ILP engine, `evaluate_policy()` |
+| `08_run_models.R` | Model runs |
+| `09_validation.R` | Validation |
+| `10`–`11` | Results assets, Quarto report |
+| `12_diagnostic_gross_vs_net.R` | **This session's work** |
+
+## 1.2 The structural coupling to remember
+
+`prop_suitable` is load-bearing **twice**: it sets the hazard (script 05) *and*
+the within-WMD benefit allocation (`scaled_abundance = habitat_share ×
+abs_abundance`, script 04). Any change to how the FOREsce stock series is read
+propagates into both arms of $V$. This is why the 7/30 spatial-join fix moved
+results as much as it did, and it constrains any redesign of the hazard.
+
+---
+
+# 2. THE FINDING
+
+## 2.1 The problem
+
+Script 05 computes the hazard as a **net change in habitat stock**:
+
+```{r}
+trans_raw <- (ps_t - ps_t1) / ps_t
+trans_prob <- pmax(epsilon, trans_raw)
+```
+
+Writing $L$ for area converting suitable → unsuitable and $G$ for the reverse:
+
+$$ps_{t+1} = ps_t - L + G \;\Longrightarrow\; \frac{ps_t - ps_{t+1}}{ps_t} = \frac{L - G}{ps_t}$$
+
+So script 05 computes $(L-G)/ps_t$ where $L/ps_t$ was intended. The two agree only
+where $G = 0$. Recovering $L$ and $G$ separately requires returning to pixel
+level, because the aggregation in script 02 nets them irreversibly.
+
+## 2.2 Headline results (full run, 16 year-pairs, 18,704 EAU-years)
+
+**The net metric conceals 22.8% of all habitat conversion.**
+
+| Landscape total (EAU-fraction units, both RCPs, 2020–2090) | Value |
+|---|---|
+| Gross loss $L$ | 40.72 |
+| Gross gain $G$ | 9.27 |
+| Net ($L-G$) | 31.45 |
+| **Hidden ($G/L$)** | **22.8%** |
+
+Units note: these are **areas, not percentages**. `prop_lost` is the fraction of
+an EAU's *total* area (denominator `scf`) converting in that decade; summing over
+EAU-years gives "EAU-equivalents of area." The sum spans both RCPs, so halve for
+a single scenario.
+
+| Censoring (non-terminal EAU-years) | Count | Share |
+|---|---|---|
+| Total rows | 18,688 | — |
+| With any real loss (gross > 0) | 14,477 | 77.5% |
+| **Censored (gross > 0, net ≤ 0)** | **1,659** | **8.9% of all, 11.5% of losing** |
+| Understated (gross > net) | 11,110 | 59.4% |
+| Gross loss exactly zero | 4,211 | 22.5% |
+
+Censored-row magnitudes: mean 0.00227, median 0.00069, p90 0.00619, max 0.03555.
+The worst censored parcel loses **3.6% of its habitat in a decade** and enters the
+model as risk-free.
+
+## 2.3 The 2050 dip is REAL, not a netting artefact
+
+This closes the "(currently undiagnosed) drop in 2050" note in the .qmd.
+
+Gross loss collapses at 2050 as well as net — mean per-decade conversion falls
+from **1.87% (2040) to 0.20% (2050)**, a ~9× drop, in both RCPs. Since gross loss
+cannot be masked by restoration, the drop is in the FOREsce data itself: the GCAM
+reference scenario front-loads essentially all cropland expansion before 2050.
+Consecutive-year `prop_suitable` correlations run 0.99956–0.99997 with none
+flagged, ruling out duplicate raster layers.
+
+## 2.4 But netting does serious damage mid-century
+
+| Decade | gross | net | ratio | % censored |
+|---|---|---|---|---|
+| 2020–2040 | ~0.018 | ~0.017 | 1.02–1.27 | 0.5–7% |
+| **2050–2070 (4.5)** | ~0.002 | 0.0009 → **−0.0003** | 2.2 → 4.5 → **NA** | **14–17%** |
+| **2050–2070 (8.5)** | ~0.002 | **−0.0033, −0.0009, −0.0013** | **all NA** | **16–24%** |
+| 2080–2090 | ~0.003 | ~0.002 | ~1.27 | ~4% |
+
+In **four decade-scenario cells the mean net loss is negative** — the landscape
+reads as net-restoring, so essentially the whole decade floors to epsilon despite
+~0.2%/decade of real conversion.
+
+## 2.5 A scenario-ordering inversion
+
+At 2050, RCP 8.5 has ~5× the restoration of 4.5 (`gain_mean` 0.00538 vs 0.00110):
+
+| | gross loss | gain | net |
+|---|---|---|---|
+| RCP 4.5 | 0.00204 | 0.00110 | **+0.00094** |
+| RCP 8.5 | 0.00206 | 0.00538 | **−0.00332** |
+
+Habitat is destroyed at effectively the **same rate** in both (0.204% vs 0.206%).
+The entire net gap comes from restoration. The model is therefore told that
+high-emissions RCP 8.5 carries *less* conversion risk than RCP 4.5.
+
+**Why this is an artefact, not a finding:** acquisition prevents conversion — that
+is the causal mechanism $V$ rests on. Restoration elsewhere in an EAU does not
+reduce the risk to habitat currently there, and buying a parcel does not cause the
+gain. Netting makes the hazard answer "is this EAU's stock shrinking?" when the
+decision needs "is this EAU's existing habitat at risk?"
+
+This likely already shows in Table 1, where RCP 8.5 has lower value-over-baseline
+than 4.5 in every policy. Some of that gap is probably mid-century hazard being
+floored away by restoration that acquisition neither prevents nor captures.
+
+## 2.6 Epsilon
+
+The user's prior was that the data-derived `epsilon` in script 05 exists only
+because the net metric admits growth, and becomes obsolete under a flow metric.
+**Confirmed, and more strongly than argued:** `epsilon <- min_positive_loss / 10`
+is *constructed* to sit below every positive loss value, so
+`{trans_raw < epsilon}` and `{trans_raw <= 0}` select the **same rows**. Testing
+censoring against 0 is exactly equivalent. (The only divergence would be
+`epsilon_override`, which is `NULL`.)
+
+Under a flow metric `gross_loss >= 0` identically, so nothing can go negative.
+**But** 4,211 rows (22.5%) have gross loss of exactly zero — genuinely no
+conversion, not netted away. A background-risk decision is still required, just an
+honest one (a parameter chosen and defended) rather than a patch for an impossible
+value.
+
+---
+
+# 3. Deliverables produced
+
+| File | Status | Purpose |
+|---|---|---|
+| `12_diagnostic_gross_vs_net.R` | Modified, **not re-run since final fix** | Main diagnostic |
+| `12b_recover_finish.R` | Run successfully | Finished sections B–D from a live session after a crash |
+| `12c_patch_sentinel.R` | **Written, not confirmed run** | Repairs 16 sentinel-collision rows |
+
+All diagnostic output goes to `diag_gross_v_net/` only — deliberately *not*
+`derived_data/` or `output_figs/`, so it can never be mistaken for canonical
+pipeline data:
+
+- `diag_gross_vs_net.csv` (18,688 rows; 18,704 after patch)
+- `diag_summary.csv` (16 rows: rcp × year)
+- `diag_gross_vs_net_scatter.png`
+- `progress.log`
+
+`RUN_TAG` appends `_QUICK` on smoke tests so partial artefacts are
+self-identifying and cannot overwrite a real run.
+
+---
+
+# 4. Changes made to script 12 (and why)
+
+## 4.1 User-requested
+
+1. **Isolated output folder** `diag_gross_v_net/`.
+2. **Scatter figure only** — time-series figure dropped.
+3. **Literature-comparison section removed** (was section D); anomaly probe
+   renumbered E → D. `LIT_RATES` deleted.
+4. **Censoring tested against 0**, not epsilon (see §2.6 — equivalent by
+   construction).
+5. **`ratio` returns `NA`** when `net_mean <= 0` instead of
+   `pmax(net_mean, 1e-12)`, which silently converted negative denominators to
+   1e-12 and printed ~1e7. Added `gross_minus_net`, always well-defined.
+6. **Class decomposition deferred** by user decision (see §7).
+
+## 4.2 Performance work
+
+Runtime went from a projected **5.5 h serial** to **23.8 min**:
+
+| Change | Effect |
+|---|---|
+| Serial one-slot raster cache | 24% — **later removed**, incompatible with parallel dispatch |
+| Parallel over 16 year-pairs (PSOCK) | ~4.4× |
+| Single-pass `lapp` (12 native passes → 3) | ~4.1× per pair |
+
+The single-pass rewrite is the important one. Per pair it now does:
+
+1. **One** `crop` over a 2-layer stack of both source years
+2. **One** `lapp` emitting all flow layers at once — complements and products are
+   transient vectors inside the chunk callback, never separate rasters
+3. **One** multi-layer `resample` (replacing four separate calls)
+
+Temp I/O: ~56 GB → ~12 GB per pair.
+
+**Deliberately NOT done** (do not "optimize" these later):
+
+- `resample(method = "sum")` is **not** replaced by `aggregate(fact = ...)`.
+  It would be far faster but would no longer reproduce script 02's aggregation
+  exactly, and check A2 is the entire basis for comparing to the pipeline.
+- `ps_t1` is **not** derived as `ps_t - L + G`. That would save a resample but
+  make check A1 true by construction.
+
+## 4.3 Robustness added
+
+- **Scratch-space preflight** — computes requirement from `n_cells × scf`, reads
+  free space via `df -Pk`, stops *before* a long run rather than during one.
+  `TERRA_TEMPDIR` redirects terra's scratch.
+- **`TERRA_MEMFRAC`** — auto-set to `0.6 / n_workers` and applied *inside* the
+  worker. terra's `memfrac` is per-process and workers inherit it; left at
+  default, N workers can commit N × 60% of RAM and swap. On macOS that presents
+  as slowness, not an error.
+- **`PARALLEL_BACKEND`** — `"psock"` (default, RStudio-safe), `"fork"`
+  (Rscript only), `"serial"`.
+- **Progress log** — PSOCK workers cannot print to the RStudio console, so
+  per-pair completions append to `diag_gross_v_net/progress.log`.
+- **`compareGeom` guard** — fails loudly with both filenames if source years
+  don't share a grid, rather than mis-registering loss against gain.
+
+---
+
+# 5. BUGS FOUND — read before touching the raster code
+
+Six bugs surfaced. Four were introduced during this session. Recorded honestly
+because the failure *modes* generalise.
+
+## 5.1 INT1U sentinel collision (most important)
+
+**Symptom:** 16 EAU-years (15 `prop_lost`, 1 `prop_gained`) came back `NaN` while
+`ps_t` and `ps_t1` were clean. Not edge cells — `ps_t` ran 0.08–0.70, median 0.44
+— and perfectly symmetric across RCPs.
+
+**Cause:** the flow raster was written as `INT1U`, whose nodata sentinel is **255**.
+The resampled output **inherits that nodata value**, so any EAU whose summed flow
+count landed on exactly 255 pixels was read back as `NaN` rather than 255.
+
+**Confirmation:** every affected row reconstructs via the stock identity to
+exactly `255/scf` = 0.0006695831. `ps_t`/`ps_t1` were untouched only because their
+sums (3e4–3e5) can never equal 255.
+
+**Fix:** no NA is ever written to the raster. All four flow layers are strict 0/1;
+coverage travels as a **fifth 0/1 layer** whose sum gives covered pixel count per
+EAU. Missingness is applied at EAU resolution *after* aggregation, where no
+sentinel exists. `NAflag = -1` on the resample as belt-and-braces (sums are
+non-negative, so no collision possible).
+
+```{r}
+# CURRENT (fixed) form — note: no NA written, coverage as a count layer
+flow <- terra::lapp(s, fun = function(a, b) {
+  ok  <- !is.na(a) & !is.na(b)
+  st  <- as.integer(a %in% classes & ok)
+  st1 <- as.integer(b %in% classes & ok)
+  cbind(st, st1,
+        st * (1L - st1) * as.integer(ok),   # lost
+        (1L - st) * st1 * as.integer(ok),   # gained
+        as.integer(ok))                     # coverage
+}, wopt = list(datatype = "INT1U"))
+```
+
+> **GENERAL RULE:** never encode missingness in a value that a legitimate sum
+> could produce. This applies to any integer-typed intermediate elsewhere in the
+> pipeline, including script 05 if the hazard is reworked.
+
+## 5.2 `na.rm = TRUE` masked the check meant to catch 5.1
+
+Check A1 used `max(abs(ident_resid), na.rm = TRUE)`, so it **skipped exactly the
+rows that were broken** and reported PASS. Now counts NA residuals and FAILS if
+any exist.
+
+## 5.3 Filtering on `ps_t` alone
+
+`filter(!is.na(ps_t))` let through rows where `ps_t` was present but a partner
+column was NA. These propagated into `gross_loss`, turned every `sum()` into NA,
+and crashed section B at `if (cens$n_censored > 0)`. Now filters on all flow
+columns and reports the two failure modes separately (expected no-coverage vs
+unexpected partial decomposition).
+
+## 5.4 `%in%` returns FALSE for NA, not NA
+
+In the `lapp` callback, a no-coverage pixel would have silently become 0 and
+entered the sums as real unsuitable land. Caught before it shipped.
+
+## 5.5 `on.exit()` at top level
+
+Written for PSOCK cluster teardown, but `on.exit` registers against a *function*
+frame and there is none in a sourced script — it would have fired immediately and
+stopped the cluster before any work ran. Replaced with
+`tryCatch(..., finally = stopCluster(cl))`.
+
+## 5.6 Backend failure semantics differ
+
+`mclapply` returns worker failures as list elements; `parLapplyLB` **raises**.
+Under PSOCK the per-pair failure report would never have fired, and one failure at
+hour two would have discarded all completed pairs. The worker call is now wrapped
+in `try()` so both backends behave identically.
+
+## 5.7 Figure title was inverted (pre-existing)
+
+Said "Every point **below** the dashed line understates conversion risk." Since
+`gross − net = gain/ps_t ≥ 0` identically, **no point can fall below the
+diagonal**. Corrected to "above," with a caption noting the line doubles as a
+visual check on the decomposition.
+
+---
+
+# 6. Run environment and performance
+
+macOS, 12 cores detected, ~790 GB free on the boot volume. terra scratch defaults
+to `/var/folders/...` on `/`.
+
+**Settings used for the successful full run:** `QUICK <- FALSE`,
+`N_CORES <- 6L`, `PARALLEL_BACKEND <- "psock"`, `TERRA_TEMPDIR <- NULL`,
+`TERRA_MEMFRAC <- NULL` (auto → 0.100).
+
+**Result:** 23.8 min wall, 105.3 min summed worker time, **4.4× speedup**.
+
+## 6.1 I/O contention is measurable
+
+Same rasters, same code — only worker count varies:
+
+| Concurrent workers | Per-pair time |
+|---|---|
+| 2 | ~311 s |
+| 6 | ~405–461 s |
+| 3–4 (final group) | ~296–314 s |
+
+Six workers cost ~45% more per pair than two. Throughput still won, but this is
+why the speedup was 4.4× not 6×. **The job is disk-bound, not CPU-bound.**
+
+## 6.2 Scheduling
+
+16 pairs ÷ 6 workers leaves a 5-minute tail where one pair ran with five workers
+idle (~17% of capacity). **Use `N_CORES <- 8L` (2 clean waves) or `4L` (4 waves)**
+next time. Utilisation was 73.7%.
+
+Per-pair costs are uniform (meanclim-anchored pairs cost the same as the rest), so
+`parLapplyLB`'s load balancing buys little here; prescheduled dispatch would
+perform identically.
+
+## 6.3 Estimation lesson
+
+Runtime was mis-estimated **three times**, twice optimistically. The root error:
+script 02's "~4 min per scenario" comment is **parallel wall-clock across all
+cores**, not serial cost per raster. Script 02 also does far less per unit (1
+classify + 1 resample per file, no native-resolution intermediates).
+
+> Calibrate from measured per-pair timings in `progress.log`, not from comments in
+> other scripts.
+
+## 6.4 Production cost, if the metric is adopted
+
+A production gross-loss pipeline would be **~2.3× script 02**, not 15×. The
+diagnostic is expensive because it computes $G$ (production needs only $L$),
+resamples `ps_t1` independently (to keep A1 honest), and cannot reuse rasters
+across pairs (parallelism replaced the cache). Fold `prop_lost` into script 02's
+existing loop rather than adding a script. It is not in the iteration loop — 05 →
+08 stay fast.
+
+---
+
+# 7. OPEN ITEMS
+
+## 7.1 Immediate
+
+1. **Confirm `12c_patch_sentinel.R` ran.** Written but not verified. It
+   re-verifies each row reconstructs to exactly 255 px (and *stops* if not), fills
+   `255/scf`, recomputes derived columns, re-runs A1 with no `na.rm` on all rows,
+   and re-saves with a `patched_sentinel` flag. Effect on conclusions is nil
+   (~0.011 against L = 40.7).
+2. **Script 12 has not been re-run since the §5.1 fix.** Current CSVs come from
+   the pre-fix run plus recovery. Results are correct after patching, but a clean
+   re-run would be tidier (~16 min at `N_CORES <- 8L`).
+3. **Stale comment:** the RUNTIME header says "45–75 min at N_CORES = 4," written
+   before measurement. Actual is ~20 min at 4 workers.
+
+## 7.2 The main decision
+
+**Switch `trans_prob` in script 05 to `prop_lost / ps_t` and re-run the models.**
+
+Predictions to test:
+
+- Absolute value-added rises (mid-century hazard stops being ~zero)
+- Rolling-vs-myopic gap likely **widens in later periods**, where the two metrics
+  diverge most
+- Cross-scenario differences **compress** — some of RCP 8.5's lower
+  value-over-baseline in Table 1 is metric artefact (§2.5)
+
+Requires a background-risk decision for the 4,211 zero-loss rows (§2.6).
+
+## 7.3 Deferred by user (not rejected)
+
+- **Class decomposition.** `L` is currently one number, but literature rates are
+  class-specific (wetland 0.57%/yr, grassland 1.33%/yr) and the suitable set lumps
+  grass (19, 26) with water/wetland (20, 28, 29). No like-for-like comparison
+  without splitting.
+- **Destination decomposition.** Loss to cropland is conversion; open-water →
+  barren under a dry FOREsce draw is hydrology. Currently identical numbers.
+  Bears on whether the 2050 collapse is agricultural or hydrologic.
+
+## 7.4 Discrepancies to reconcile
+
+- **EAU area.** Grid is 18,514 m → **342.8 km²** (34,275 ha) per EAU. The project
+  doc and Figure 1 caption say **~282 km²** (28,200 ha) — a 21% difference that
+  propagates into any hectare figure. Cost-per-hectare is unaffected (equal-area
+  cells, constant rescale); total-area claims are not.
+- **Wet/dry land cover.** FOREsce has no wet/dry distinction, so land cover (and
+  therefore conversion risk and within-WMD duck allocation) is constant across
+  wet/dry. Only abundance varies. Pre-existing, documented limitation; interacts
+  with the counter-intuitive wet-vs-dry gap in the .qmd.
+
+## 7.5 Reporting suggestion
+
+Quote the **area-weighted** landscape rate, not the mean of per-parcel ratios:
+
+```{r}
+nonterm %>% summarise(
+  habitat_eau_years = sum(ps_t),
+  loss_rate = sum(prop_lost)   / sum(ps_t),
+  gain_rate = sum(prop_gained) / sum(ps_t))
+```
+
+(`gross_mean` = 0.84%/decade is the *unweighted* per-EAU mean.)
+
+---
+
+# 8. Notes for the next agent
+
+**On this codebase**
+
+- Script 12 is standalone and read-only w.r.t. the pipeline. Safe to run; safe to
+  delete `diag_gross_v_net/`.
+- Fidelity checks A1–A3 are the safety net. **A2** (recomputed `prop_suitable`
+  matches panel) is the strongest — it is what licenses comparing diagnostic
+  numbers to pipeline numbers. Full-run values: A1 7.56e-08; A2 5.55e-16
+  (n=12,306); A3 4.53e-14 (n=8,045).
+- A1's residual is ~8 orders larger than A2's for a benign reason: A1 sums four
+  separately-rounded resampled layers so float32 rounding shows, while A2 compares
+  the same quantity computed the same way twice, so rounding cancels.
+- `QUICK <- TRUE` gives 2 pairs, RCP 4.5 only. **Sections B–D are not
+  interpretable under QUICK** — it retains the two highest-conversion decades and
+  cannot see 2050. It reported 4.2% concealment vs 22.8% on the full run.
+- PSOCK workers receive only serialisable arguments (paths, vectors, numbers).
+  **A `SpatRaster` cannot cross a PSOCK connection** — the EAU mask is re-opened
+  from its path inside the worker. Preserve this if refactoring.
+
+**On working with this user**
+
+- Technically strong; catches things. The sentinel bug surfaced because they
+  pushed on 16 anomalous rows rather than accepting "0.086%, probably edge
+  effects."
+- Asks direct clarifying questions when an explanation is unclear. Answer the
+  actual confusion rather than restating.
+- Explicitly invited push-back ("Push back if you disagree") — and was right on
+  the epsilon question when I was wrong.
+- Wants deferred items *noted*, not silently dropped.
+- Do not claim verification that did not happen. R was unavailable in the agent
+  environment all session; every claim about behaviour was static reasoning until
+  the user ran it. Say so.

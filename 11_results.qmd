@@ -309,7 +309,7 @@ knitr::include_graphics(file.path(OUT_DIR, "fig_benefit_ribbon.png"))
 
 
 ### Risk
-Risk of conversion across all EAUs is heavily skewed, with the vast majority of EAUs showing a nearly zero per period conversion risk. There is a (currently undiagnosed) drop in 2050 in per period conversion risk. 
+Risk of conversion across all EAUs is heavily skewed, with the vast majority of EAUs showing a nearly zero per period conversion risk. There is a drop in 2050 in per period conversion risk: this is a function of the FOREsce projection, which frontloads cropland through 2050, at which point conversions decline.
 
 ```{r}
 #| label: fig-risk-box
