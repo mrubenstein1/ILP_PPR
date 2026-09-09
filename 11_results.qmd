@@ -47,7 +47,6 @@ execute:
        1. tweak the model / rerun 10_results_assets.R  → assets refresh
        2. re-render this .qmd                          → document rebuilds
 
-
  • ALL titles + captions live in one place: the `caps` list in the setup chunk.
    Edit them there (not in the figures — the images are intentionally text-free).
 
@@ -274,9 +273,10 @@ periods** and **5 scenarios** (RCP 4.5/8.5 × wet/dry, plus a stationary null).
 
   `V[i,τ] = Σ_{t=τ}^{T} δ^t · b[i,t] · (1 − S[i,t])`.
   
-  This is the value gained by removing conversion risk from parcel i starting at τ (i.e., value of acquiring a parcel). All unacquired parcels are treated as available at each re-solve; conversion risk does not remove parcels from the set, but instead enters **only** through the weighting in the objective. Acquisition removes this weight and counts full (discounted) value. This is justified because the **per-period** conversion probability is small, so few parcels actually convert out of availability within a decade — even though the *cumulative*, discounted loss-prevented value (value_added) is substantial enough for the policies to separate clearly.
+  This is the value gained by removing conversion risk from parcel i starting at τ (i.e., value of acquiring a parcel). All unacquired parcels are treated as available at each re-solve; conversion risk does not remove parcels from the set, but instead enters **only** through the weighting in the objective. Acquisition removes this weight and counts full (discounted) value; unaquired parcels retain
+only their survivial-discounted value.
 
-- **Budget**: set to a scalable amount based on a number of "median priced" EAUs per period. currently set to 5. 
+- **Budget**: set to a scalable amount based on a number of "median priced" EAUs per period. Currently set to the dollar equivalent of 5-median priced EAUs per period. 
 
 - **Discount Factor**: 0.95 decadal  
 
@@ -309,7 +309,7 @@ knitr::include_graphics(file.path(OUT_DIR, "fig_benefit_ribbon.png"))
 
 
 ### Risk
-Risk of conversion across all EAUs is heavily skewed, with the vast majority of EAUs showing a nearly zero per period conversion risk. There is a drop in 2050 in per period conversion risk: this is a function of the FOREsce projection, which frontloads cropland conversion through 2050, at which point conversions decline.
+Risk of conversion across all EAUs is heavily skewed, with the vast majority of EAUs showing a nearly zero per period conversion risk [UPDATE THIS WITH NEW SUMMARY VALUES ONCE THE GROSS VS NET CONVERSION IS COMPLETE]. There is a drop in 2050 in per period conversion risk: this is a function of the FOREsce projection, which frontloads cropland conversion through 2050, at which point conversions to cropland decline.
 
 ```{r}
 #| label: fig-risk-box
