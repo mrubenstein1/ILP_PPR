@@ -497,7 +497,7 @@ I changed the calculations to see how this would affect the estimate of conversi
 
 
 
-
+**** include the GROSS VS NET SCATTER PLOT FROM THE DIAGNOSTIC (SCRIPT 12)
 
 
 # Reference: Literature-derived

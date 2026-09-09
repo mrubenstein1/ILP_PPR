@@ -27,7 +27,8 @@ The three models acquire land period by period (decadal steps, 2020–2100) unde
   foresighted benchmark.
 
 The spatial unit is the **EAU** (Equal Area Unit, ~282 km²). After dropping 4 Wetland
-Management Districts, the analysis uses **879 EAUs across 20 WMDs**, over **9 decadal
+Management Districts (due to either lack of landcover data, or low confidence in 
+hydrological modeling), the analysis uses **879 EAUs across 20 WMDs**, over **9 decadal
 periods** and **5 scenarios** (RCP 4.5/8.5 × wet/dry, plus a stationary null).
 
 
@@ -73,10 +74,13 @@ and `solver_convergence.csv` (a per-run record of how often the per-solve time c
 3. **`03_create_data_panel`** — assembles the long-format data panel (EAU × year × RCP ×
    GCM), including wet/dry duplication and the stationary scenario.
 4. **`04_benefit_data`** — waterfowl-abundance benefit, interpolated to decadal steps and
-   distributed within WMDs by suitable habitat. **Drops the 4 excluded WMDs** (→ 841 EAUs).
-5. **`05_risk_of_loss`** — conversion-risk hazard (`trans_prob`), a net-loss/erosion
+   distributed within WMDs by suitable habitat. **Drops the 4 excluded WMDs** (→ 879 EAUs).
+5. **`05_risk_of_loss`** — conversion-risk hazard, a net-loss/erosion
    proxy with a small background floor ε. Provisional; isolated to this one column so the
    metric can be swapped without touching model code.
+   
+    ***** UPDATE THIS TO GROSS LOSS ONCE CHANGE IS COMPLETE ********
+    
 6. **`06_cost_data`** — acquisition cost per EAU (Nolte 2020 FMV; 2%/yr inflation).
 
 **Data Panel Produced via Data Pipeline:**
@@ -100,6 +104,9 @@ and `solver_convergence.csv` (a per-run record of how often the per-solve time c
 | cell_id | integer | Raster cell number in the EAU grid — the permanent by-place key linking each EAU to its location. Used to join land-cover data to the panel by position on the ground rather than by row order. NA for 2020 baseline and stationary rows, which are constructed from eau_id after the land-cover join and never carry the cell key. |
 
 
+    ***** UPDATE TRANS_PROB TO GROSS LOSS ONCE CHANGE IS COMPLETE: CHECK FOR CORRECTNESS ********
+
+
 **Modeling core:**
 
 7. **`07_ilp_core`** — shared engine sourced by `08` and `09`: scenario-matrix assembly,
@@ -107,7 +114,7 @@ and `solver_convergence.csv` (a per-run record of how often the per-solve time c
    evaluation. Solver settings (a 60 s per-solve time cap, threads, seed, output) and the
    **spend-down** block (`SPEND_DOWN_MODE`, the value-first/full-budget-deployment tiebreak)
    live in parameter blocks near the top.
-    - Temporal discount rate lives here: defined as 0.95
+    - Temporal discount rate lives here: defined as 0.95 per decade
     - Budget parameter lives here: budget sensitivity (strict or generous budget setting) can be changed     at the top
     - Spend down mode lives here: Budget deployment is controlled by `SPEND_DOWN_MODE` 
    (default `"spend"` forces the model to exhaust the budget each time period).
@@ -126,12 +133,10 @@ and `solver_convergence.csv` (a per-run record of how often the per-solve time c
 
 **Reporting / mapping:**
 
-10. **`10_results_assets`** — single pure-reader reporting script: builds two results tables
-    + two figures (`ggplot2`/`flextable`) **and** two acquisition maps (footprint by
-    decade; rolling-vs-myopic foresight difference; wet-vs-dry) from `08`'s saved CSVs into
+10. **`10_results_assets`** — single pure-reader reporting script: builds results tables
+    and figures (`ggplot2`/`flextable`) and maps from `08`'s saved CSVs into
     `output_figs/`. No solver/`07` needed. The maps need only `ggplot2`; `terra`/`sf` are
-    used solely for the optional WMD outline overlay (auto-skipped if absent), so a user
-    without the spatial stack still gets tables + figures. Toggle maps with `DRAW_MAPS`.
+    used solely for the optional WMD outline overlay (auto-skipped if absent). Toggle maps with `DRAW_MAPS`.
 
 11. **`11_results.qmd`** reports results from `10_results_assets`, with annotation/prose accompanying each figure/graph/map. Allows for regular and flexible updating of results as the project evolves. 
 
