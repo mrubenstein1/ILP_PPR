@@ -243,6 +243,99 @@ eau_panel <- eau_panel %>%
 
 
  
+# 10b. Attach gross habitat flows (loss and gain) — BY PLACE ####
+#
+# Script 05 needs the GROSS conversion rate, L / prop_suitable, where L is the
+# area converting suitable -> unsuitable in the decade. Differencing
+# prop_suitable gives only the NET change, (L - G) / prop_suitable, which
+# diagnostic script 12 showed conceals 20.4% of all conversion across the
+# modelled EAUs and inverts the sign of the hazard in four mid-century
+# decade-RCP cells. L and G are therefore measured at native FOREsce resolution
+# in script 02 section 5 and read here.
+#
+# WHY A SEPARATE OBJECT AND NOT A COLUMN ON eau_panel:
+# A flow row describes a TRANSITION, year -> year + 10, so the flows run
+# 2020..2090 while the panel's rows run 2020..2100. They do not align. In
+# particular the 2020 flows exist separately for RCP 4.5 and 8.5, while the
+# panel carries a single 2020 row per EAU with rcp = "baseline" (script 05
+# pools the two into it). Forcing these onto the panel would mean either
+# inventing 2020 RCP rows -- which breaks the row-count checks below and every
+# downstream assumption about panel shape -- or widening to prop_lost_45 /
+# prop_lost_85 columns that are NA on almost every row. Keeping flows in their
+# own long table costs script 05 one extra read and keeps the panel schema
+# untouched.
+#
+# What this section DOES own is the cell_id -> eau_id translation, because that
+# is this script's job and the by-place join is verified here (check 7 below).
+# Script 05 then works purely in eau_id and never sees a cell number.
+
+flows_45 <- read_csv(file.path(DIR_DERIVED, "Lu_flows_45.csv"), show_col_types = FALSE)
+flows_85 <- read_csv(file.path(DIR_DERIVED, "Lu_flows_85.csv"), show_col_types = FALSE)
+
+eau_flows <- bind_rows(
+  flows_45 %>% mutate(rcp = "45"),
+  flows_85 %>% mutate(rcp = "85")
+) %>%
+  # read_csv parses whole numbers as double. Coerce the two key columns to
+  # integer: cell_id must match eau_meta's type for the join below, and year must
+  # match the panel's integer year for the joins script 05 does against this
+  # table. Leaving them double works by coercion in dplyr but breaks any
+  # identical() comparison, including the year check further down.
+  mutate(cell_id = as.integer(cell_id), year = as.integer(year)) %>%
+  inner_join(eau_meta, by = "cell_id") %>%      # by raster cell number, as above
+  filter(!is.na(prop_lost), !is.na(prop_gained)) %>%
+  select(eau_id, wmd_id, year, rcp, prop_lost, prop_gained) %>%
+  arrange(rcp, year, eau_id)
+
+cat(sprintf("\n  Gross flows loaded: %d rows | %d EAUs | years %d-%d | RCPs %s\n",
+            nrow(eau_flows), n_distinct(eau_flows$eau_id),
+            min(eau_flows$year), max(eau_flows$year),
+            paste(sort(unique(eau_flows$rcp)), collapse = ", ")))
+
+# The flow table must cover exactly the EAUs the panel covers, and every
+# non-terminal period, or script 05 will silently produce NA hazards. Checking
+# here rather than in 05 keeps the failure next to the join that caused it.
+flow_years    <- sort(unique(eau_flows$year))
+expected_flow_years <- as.integer(c(2020L, head(years_use, -1)))  # 2020..2090
+flow_eaus     <- sort(unique(eau_flows$eau_id))
+panel_eaus    <- sort(unique(eau_panel$eau_id))
+flow_complete <- eau_flows %>% count(year, rcp, name = "n_eau")
+
+# setequal() rather than identical() on the set comparisons: identical() is
+# strict about storage mode, so an integer-vs-double difference in a column read
+# from CSV fails it even when every value matches.
+flow_checks <- list(
+  "Flow EAU set matches panel EAU set" =
+    setequal(flow_eaus, panel_eaus) && length(flow_eaus) == length(panel_eaus),
+  "Flow years are 2020..2090 (2100 terminal, no flow)" =
+    setequal(flow_years, expected_flow_years) &&
+    length(flow_years) == length(expected_flow_years),
+  "Every year x RCP has the full EAU set" =
+    all(flow_complete$n_eau == length(panel_eaus)),
+  "Flows are non-negative" =
+    min(eau_flows$prop_lost) >= 0 && min(eau_flows$prop_gained) >= 0
+)
+
+for (nm in names(flow_checks))
+  cat(sprintf("  %s  %s\n", if (flow_checks[[nm]]) "[PASS]" else "[FAIL]", nm))
+
+if (any(!unlist(flow_checks))) {
+  cat("\n  --- Diagnostic detail ---\n")
+  cat(sprintf("  Flow EAUs: %d | panel EAUs: %d | in flows only: %d | in panel only: %d\n",
+              length(flow_eaus), length(panel_eaus),
+              length(setdiff(flow_eaus, panel_eaus)),
+              length(setdiff(panel_eaus, flow_eaus))))
+  cat(sprintf("  Flow years: %s\n", paste(flow_years, collapse = ", ")))
+  cat("  EAU count per year x RCP:\n")
+  print(as.data.frame(flow_complete), row.names = FALSE)
+  stop("Gross flow table does not line up with the panel. Re-run script 02 ",
+       "section 5 before proceeding.\n  Failed: ",
+       paste(names(flow_checks)[!unlist(flow_checks)], collapse = ", "))
+}
+
+saveRDS(eau_flows, file.path(DIR_DERIVED, "eau_flows.rds"))
+
+
 # 11. Save panel for later steps ####
  
 saveRDS(eau_panel,  "derived_data/eau_panel.rds")

@@ -323,7 +323,7 @@ knitr::include_graphics(file.path(OUT_DIR, "fig_risk_box.png"))
 
 
 ### Cost
-Acquisition cost per hectare. High cost parcels are concentrated in the eastern portion of the PPR. 
+Acquisition cost per hectare. High cost parcels are concentrated in the eastern portion of the PPR, consistent with other analyses [CITATION]. 
 
 ```{r}
 #| label: fig-cost-map
@@ -344,14 +344,13 @@ cat("*(Descriptive figures not generated \u2014 the inputs panel was absent when
 
 {{< pagebreak >}}
 
-
-
+## Model results
 
 ## Acquisition value over baseline
 
-This table compares the total benefit secured across the landscape (2020-2100) via three different acquisition policies (rolling, myopic, and greedy) with a "do-nothing" baseline scenario in which no parcels are acquired. All acquisition policies outperform the do-nothing baseline under climate change scenarios; there is no improvement over the do-nothing baseline under stationarity due to conversion risk set to near zero. 
+This table compares the total benefit secured across the landscape (2020-2100) via three different acquisition policies (rolling, myopic, and greedy) with a "do-nothing" baseline scenario in which no parcels are acquired. All acquisition policies outperform the do-nothing baseline under climate change scenarios; [DESCRIBE WHETHER THERE IS AN IMPROVEMENT UNDER STATIONARITY, ONCE THE GROSS V NET LOSS CHANGE IS COMPLETE]. 
 
-The rolling policy outperforms the myopic and greedy policies under all climate scenarios, consistent with our expectations that an acquisition policy with foresight should outperform a policy with no or limited foresight. The absolute improvement of any acquisition policy, however, is small: at best, the rolling policy secures improvement over baseline of less than 1%. I believe this is due to a low conversion risk: in the landscape as currently described, conversion risk is quite low  meaning the additional benefit secured through acquisitions (even the optimal/rolling model) is comparatively low.
+The rolling policy outperforms the myopic and greedy policies under all climate scenarios, consistent with our expectations that an acquisition policy with foresight should outperform a policy with no or limited foresight. [PROVIDE STATS ON HOW MUCH IMPROVEMENT EACH POLICY PROVIDES, IN EITHER TOTAL DUCK PAIRS OR IN %]
 
 ```{=latex}
 \needspace{13\baselineskip}   % keep this whole table on one page (moves to next page if it won't fit)

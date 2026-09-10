@@ -1,12 +1,41 @@
 ### Transition Probability (Risk of Loss) ####
 #
 # Operationalization:
-#   trans_prob[i, r, t] = max(epsilon, (prop_suitable_t - prop_suitable_t+1) / prop_suitable_t)
+#   trans_prob[i, r, t] = max(epsilon, prop_lost[i, r, t] / prop_suitable[i, r, t])
+#
+# This is the GROSS conversion rate: of the habitat standing at t, what fraction
+# converts to unsuitable by t+1.
+#
+# ── WHY GROSS AND NOT NET ─────────────────────────────────────────────────────
+# This script previously differenced prop_suitable:
+#
+#   (ps_t - ps_t1) / ps_t
+#
+# Writing L for area converting suitable -> unsuitable and G for the reverse,
+# ps_t1 = ps_t - L + G, so that expression is (L - G) / ps_t -- the NET rate,
+# where L / ps_t was intended. The two agree only where G = 0.
+#
+# Diagnostic script 12 measured L and G separately at native FOREsce resolution
+# and found, across the 879 modelled EAUs:
+#   * the net metric conceals 20.4% of all habitat conversion
+#   * it understates the landscape hazard by 25.6%
+#   * 8.0% of EAU-years lose habitat but show net <= 0, so they are floored to
+#     epsilon and enter the model as effectively risk-free
+#   * in four mid-century decade-RCP cells the mean net rate is NEGATIVE while
+#     real conversion continues -- netting inverts the sign of the hazard
+#
+# L cannot be recovered from prop_suitable, because aggregating to EAU scale nets
+# the two flows irreversibly. It is therefore measured pixel-by-pixel in script
+# 02 section 5, translated to eau_id in script 03 section 10b, and read here.
+#
+# Consequences for this script: trans_raw is now non-negative by construction, so
+# the "recovering" category disappears, epsilon binds only where loss is exactly
+# zero (about 18.7% of EAU-years rather than 22.5%), and no forward difference of
+# prop_suitable is taken anywhere.
 #
 # epsilon: minimum background risk of conversion applied to all EAUs with
-#          prop_suitable > 0. Reflects that even stable or recovering parcels
-#          face some real-world conversion risk if unprotected. Set to 0 to
-#          disable. 
+#          prop_suitable > 0. Reflects that even stable parcels face some
+#          real-world conversion risk if unprotected. Set to 0 to disable.
 #
 # Special cases:
 #   prop_suitable[t] = 0  : trans_prob = 0 (no habitat, no conservation urgency)
@@ -15,6 +44,7 @@
 #   2020 baseline row     : mean of RCP 4.5 and 8.5 2020→2030 transitions
 #
 # INPUTS:  data_panel (from script 04)
+#          derived_data/eau_flows.rds (from script 03 section 10b)
 # OUTPUTS: data_panel with trans_prob column populated; saved to derived_data/
 
 #------ Setup ________
@@ -22,6 +52,45 @@ if (!exists(".SETUP_DONE")) source("00_setup.R")
 
 # ── 0. Load data  ──────────────────────────────────────####
 data_panel <- readRDS("derived_data/panel_04_benefit.rds")
+
+# Gross habitat flows, keyed by eau_id x year x rcp. `year` is the period the
+# transition STARTS from, so these run 2020..2090; 2100 is terminal and has no
+# row. Script 03 has already verified that this covers exactly the panel's EAU
+# set for every non-terminal period.
+flows_path <- file.path(DIR_DERIVED, "eau_flows.rds")
+if (!file.exists(flows_path))
+  stop("Required input not found: ", flows_path,
+       "\n  Run script 02 (section 5, gross flows) and then script 03 first. ",
+       "This script can no longer derive the hazard from prop_suitable alone -- ",
+       "see WHY GROSS AND NOT NET at the top of this file.")
+eau_flows <- readRDS(flows_path)
+
+# eau_flows is built in script 03 against the FULL covered-EAU set (1,169: every
+# EAU with land-cover data). This panel has already had the WMD exclusion applied
+# and carries fewer. Left unrestricted, the surplus EAUs join to a missing
+# prop_suitable, produce NA loss rates, and those NAs then propagate silently
+# through the epsilon derivation into every trans_prob in the panel.
+#
+# Restrict here, once, and report it -- rather than relying on each downstream
+# join to drop them by accident.
+panel_eaus    <- sort(unique(data_panel$eau_id))
+n_flow_before <- n_distinct(eau_flows$eau_id)
+eau_flows     <- eau_flows %>% filter(eau_id %in% panel_eaus)
+
+cat(sprintf("\n  Gross flows: %d EAUs available, %d in this panel (%d dropped by the\n",
+            n_flow_before, n_distinct(eau_flows$eau_id),
+            n_flow_before - n_distinct(eau_flows$eau_id)))
+cat("  WMD exclusion upstream of this script).\n")
+
+# The reverse direction is the one that would be fatal: a panel EAU with no flow
+# data becomes an NA hazard. Check it explicitly rather than discovering it as an
+# NA count in section 9.
+missing_flow_eaus <- setdiff(panel_eaus, unique(eau_flows$eau_id))
+if (length(missing_flow_eaus))
+  stop(length(missing_flow_eaus), " EAU(s) in the panel have no gross flow data ",
+       "(e.g. ", paste(head(missing_flow_eaus, 5), collapse = ", "), "). ",
+       "eau_flows does not cover the panel -- re-run script 02 section 5 and ",
+       "script 03 section 10b.")
 
 
 # ══ PARAMETER ════════════════════════════════════════════════════════════════####
@@ -34,22 +103,31 @@ epsilon_override <- NULL   # e.g., epsilon_override <- 0.005
 # ══════════════════════════════════════════════════════════════════════════════
 
 
-# ── 1. Calculate raw proportional loss ───────────────────####
-#Note: this is computed as a habitat erosion rate, but will be 
-  # interpreted as a per-period Bernoulli conversion probability in the final ILP. 
+# ── 1. Calculate raw proportional loss (GROSS) ───────────####
+#Note: this is computed as a habitat erosion rate, but will be
+  # interpreted as a per-period Bernoulli conversion probability in the final ILP.
 
-  # From t to t+1, what is the expected % of an EAU's suitable habitat that is 
+  # From t to t+1, what is the expected % of an EAU's suitable habitat that is
   # expected to convert to unsuitable habitat?
   # in other words, what proportion of currently suitable habitat will be lost?
   # how much urgency is there to acquire this parcel in this time period?
   # parcels with high proportional loss are those expected to experience habitat loss and
-  # should be urgently considered for acquisition; those that have little expected loss may be less urgent. 
+  # should be urgently considered for acquisition; those that have little expected loss may be less urgent.
 
+  # prop_lost is the area converting suitable -> unsuitable, measured directly
+  # rather than inferred from the change in stock. Habitat converting the other
+  # way (prop_gained) is NOT subtracted: restoration elsewhere in an EAU does not
+  # reduce the risk facing habitat currently standing there, and acquisition does
+  # not cause the gain. See WHY GROSS AND NOT NET at the top of this file.
 
-raw_proportional_loss <- function(ps_start, ps_end) {
+  # prop_lost pixels are by construction a subset of the pixels suitable at t, so
+  # the ratio is bounded in [0, 1] and can never be negative. That is a change
+  # from the net formulation, which could go negative wherever gain outran loss.
+
+gross_proportional_loss <- function(ps_start, prop_lost) {
   case_when(
-    ps_start == 0        ~ 0,                                 # no habitat to lose
-    TRUE                 ~ (ps_start - ps_end) / ps_start    # can be negative (recovery)
+    ps_start == 0        ~ 0,                     # no habitat to lose
+    TRUE                 ~ prop_lost / ps_start   # gross rate, in [0, 1]
   )
 }
 
@@ -64,38 +142,51 @@ prop_ts <- data_panel %>%
 
 # ── 3. Compute raw 2020 → 2030 transition (cross-RCP boundary step) ───────────####
   #Note: At 2020 decision point, decision maker must estimate expected loss by 2030.
-  # because no 2030 RCP has materialized, this calculations takes the average of 4.5 and 8.5 net loss 
+  # because no 2030 RCP has materialized, this calculation takes the average of the
+  # 4.5 and 8.5 gross loss rates (pooled in section 5 below).
+  #
+  # ps_start is the meanclim 2020 stock, and the 2020 flows in eau_flows were
+  # measured against that same meanclim raster, so numerator and denominator
+  # refer to the same landscape.
 
 ps_2020 <- prop_ts %>%
   filter(year == 2020, rcp == "baseline") %>%
   select(eau_id, ps_start = prop_suitable)
 
-trans_2020_raw <- prop_ts %>%
-  filter(year == 2030, rcp %in% c("45", "85")) %>%
-  select(eau_id, rcp, ps_end = prop_suitable) %>%
+trans_2020_raw <- eau_flows %>%
+  filter(year == 2020L, rcp %in% c("45", "85")) %>%
+  select(eau_id, year, rcp, prop_lost) %>%
   left_join(ps_2020, by = "eau_id") %>%
-  mutate(
-    year      = 2020L,
-    trans_raw = raw_proportional_loss(ps_start, ps_end)
-  ) %>%
+  mutate(trans_raw = gross_proportional_loss(ps_start, prop_lost)) %>%
   select(eau_id, year, rcp, trans_raw)
 
 
 # ── 4. Compute raw 2030 → 2100 transitions (within-RCP forward differences) ─── ####
+  # No forward difference of prop_suitable is taken any more: the loss for the
+  # period starting at `year` is read directly from eau_flows. 2100 has no flow
+  # row (it is terminal), so the left_join leaves prop_lost NA there and the
+  # terminal branch sets the hazard to 0.
 
 trans_future_raw <- prop_ts %>%
   filter(rcp %in% c("45", "85"), year >= 2030) %>%
-  arrange(eau_id, rcp, year) %>%
-  group_by(eau_id, rcp) %>%
+  left_join(eau_flows %>% select(eau_id, year, rcp, prop_lost),
+            by = c("eau_id", "year", "rcp")) %>%
   mutate(
-    ps_next   = lead(prop_suitable),
     trans_raw = case_when(
-      is.na(ps_next) ~ 0,    # terminal period (2100): no next decision
-      TRUE           ~ raw_proportional_loss(prop_suitable, ps_next)
+      year == 2100 ~ 0,    # terminal period: no next decision
+      TRUE         ~ gross_proportional_loss(prop_suitable, prop_lost)
     )
   ) %>%
-  ungroup() %>%
   select(eau_id, year, rcp, trans_raw)
+
+# A missing flow on a NON-terminal row would silently become an NA hazard and
+# then an NA objective coefficient in the ILP. Fail here instead, where the
+# cause is still visible.
+n_missing_flow <- sum(is.na(trans_future_raw$trans_raw))
+if (n_missing_flow > 0)
+  stop(n_missing_flow, " non-terminal EAU-year(s) have no gross flow data. ",
+       "eau_flows does not cover the panel. Re-run script 02 section 5 and ",
+       "script 03 section 10b.")
 
 
 # ── 5. Pool raw estimates for the 2020 baseline row ──────────####
@@ -118,12 +209,29 @@ raw_all <- bind_rows(trans_2020_raw, trans_future_raw) %>%
 min_positive_loss <- min(raw_all$trans_raw[raw_all$trans_raw > 0])
 epsilon <- if (!is.null(epsilon_override)) epsilon_override else min_positive_loss / 10
 
+# A non-finite epsilon is silent and catastrophic: apply_floor() computes
+# pmax(NA, trans_raw), so EVERY non-terminal trans_prob in the panel becomes NA
+# and the failure only surfaces as an NA count in section 9, far from its cause.
+# The usual reason is an NA in trans_raw, which means some EAU-year has loss data
+# but no matching prop_suitable (or vice versa). Name it here instead.
+if (!is.finite(epsilon)) {
+  n_raw_na <- sum(is.na(raw_all$trans_raw))
+  stop("epsilon is not finite (", epsilon, "). ",
+       n_raw_na, " of ", nrow(raw_all), " raw loss rates are NA.\n",
+       "  This means prop_lost and prop_suitable do not cover the same EAU-years. ",
+       "Check that eau_flows was restricted to the panel EAU set in section 0.")
+}
+
 #6a. Describe transition prob distribution (raw) ####
 cat("\n=======================================================\n")
 cat("  RAW trans_prob DISTRIBUTION (before floor applied)\n")
 cat("=======================================================\n\n")
 
-# Table 1: counts across all EAU-years, broken into the three trajectory types
+# Table 1: counts across all EAU-years, broken into the three trajectory types.
+# NOTE: under gross accounting "Recovering (n)" must be 0 in every row -- loss is
+# a count of converting pixels and cannot be negative. The column is retained
+# precisely because a non-zero entry would be a visible signal that the flows are
+# wrong or mis-joined. Under the old net metric it was routinely large.
 cat("-- Table 1: All EAU-years by trajectory type --\n\n")
 
 summary_counts <- raw_all %>%
@@ -268,13 +376,48 @@ gcm_mismatch <- data_panel %>%
 stationary_wrong <- data_panel %>%
   filter(rcp == "stationary", year < 2100, trans_prob != epsilon)
 
+# CHECK: gross loss cannot be negative. prop_lost counts pixels converting
+# suitable -> unsuitable, so the rate is bounded in [0, 1] by construction. A
+# negative value means the flows are corrupt or joined to the wrong EAU. Under
+# the old net metric negative values were routine, which is what epsilon existed
+# to absorb; under gross they are impossible, so this is a real check.
+negative_raw <- raw_all %>% filter(trans_raw < 0)
+
+# CHECK: the stock identity, ps_t1 == ps_t - L + G, through the full join chain.
+# Script 02 section 6 already verifies this at cell level. What it cannot see is
+# whether the values survived cell_id -> eau_id (script 03) and the join into the
+# panel intact. That is what this tests: a mis-join would leave the residual
+# non-zero even though the raster arithmetic was correct.
+#
+# lead() appears here only as a check. The estimator above no longer differences
+# prop_suitable anywhere.
+IDENTITY_TOL <- 1e-6
+
+identity_resid <- prop_ts %>%
+  filter(rcp %in% c("45", "85"), year >= 2030) %>%
+  arrange(eau_id, rcp, year) %>%
+  group_by(eau_id, rcp) %>%
+  mutate(ps_next = lead(prop_suitable)) %>%
+  ungroup() %>%
+  filter(!is.na(ps_next)) %>%          # drops 2100, which has no successor
+  left_join(eau_flows %>% select(eau_id, year, rcp, prop_lost, prop_gained),
+            by = c("eau_id", "year", "rcp")) %>%
+  mutate(resid = ps_next - (prop_suitable - prop_lost + prop_gained))
+
+max_identity_resid <- suppressWarnings(max(abs(identity_resid$resid), na.rm = TRUE))
+n_identity_na      <- sum(is.na(identity_resid$resid))
+
 checks <- list(
   "No NAs in trans_prob"                               = n_na == 0,
   "All trans_prob values in [0, 1]"                    = n_oob == 0,
   "Terminal year (2100) trans_prob always 0"           = nrow(terminal_nonzero) == 0,
   "No non-terminal EAU (prop > 0) below epsilon floor" = nrow(below_floor) == 0,
   "trans_prob identical for wet/dry within RCP"        = nrow(gcm_mismatch) == 0,
-  "Stationary non-terminal trans_prob = epsilon"       = nrow(stationary_wrong) == 0
+  "Stationary non-terminal trans_prob = epsilon"       = nrow(stationary_wrong) == 0,
+  "Gross loss is never negative"                       = nrow(negative_raw) == 0,
+  "Stock identity survives the join chain"             =
+    is.finite(max_identity_resid) && max_identity_resid < IDENTITY_TOL &&
+    n_identity_na == 0
 )
 
 for (nm in names(checks)) {
@@ -298,6 +441,18 @@ if (length(failures) > 0) {
     cat("  GCM-mismatched groups:", nrow(gcm_mismatch), "\n")
   if (!checks[["Stationary non-terminal trans_prob = epsilon"]])
     cat("  Wrong stationary rows:", nrow(stationary_wrong), "\n")
+  if (!checks[["Gross loss is never negative"]]) {
+    cat("  Negative gross loss rows:", nrow(negative_raw), "\n")
+    cat("  This should be impossible. The flows are corrupt or mis-joined --\n")
+    cat("  re-run script 02 section 5 and check its logic check output.\n")
+    print(head(as.data.frame(negative_raw), 10), row.names = FALSE)
+  }
+  if (!checks[["Stock identity survives the join chain"]]) {
+    cat(sprintf("  Max identity residual: %.3e (tolerance %.0e), NA rows: %d\n",
+                max_identity_resid, IDENTITY_TOL, n_identity_na))
+    cat("  ps_t1 != ps_t - L + G. Script 02's cell-level check passed, so this\n")
+    cat("  points at the cell_id -> eau_id join in script 03, not the rasters.\n")
+  }
   
   cat("========================================\n\n")
   stop("Logic check FAILED. Investigate before proceeding.\n",
