@@ -118,7 +118,7 @@ SCENARIOS <- list(
 # re-optimises, certifying the discarded tail of the schedule does not change the
 # enacted trajectory. We therefore cap each solve's runtime. 
 
-#Empirically (diagnostic run, script 14) only 1-2 of the 9 per-period climate solves reach a 60s cap, each
+#Empirically (diagnostic run, see archive) only 1-2 of the 9 per-period climate solves reach a 60s cap, each
 # at <=0.05% optimality gap; the resulting realised value_added is within <0.5% of
 # the converged value, far below the ~13% rolling-vs-myopic effect. 
   #Truncation only ever biases the myopic incumbent slightly DOWN, so it cannot manufacture a 

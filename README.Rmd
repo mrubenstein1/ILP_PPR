@@ -75,12 +75,8 @@ and `solver_convergence.csv` (a per-run record of how often the per-solve time c
    GCM), including wet/dry duplication and the stationary scenario.
 4. **`04_benefit_data`** — waterfowl-abundance benefit, interpolated to decadal steps and
    distributed within WMDs by suitable habitat. **Drops the 4 excluded WMDs** (→ 879 EAUs).
-5. **`05_risk_of_loss`** — conversion-risk hazard, a net-loss/erosion
-   proxy with a small background floor ε. Provisional; isolated to this one column so the
-   metric can be swapped without touching model code.
-   
-    ***** UPDATE THIS TO GROSS LOSS ONCE CHANGE IS COMPLETE ********
-    
+5. **`05_risk_of_loss`** — conversion-risk hazard, a gross suitable habitat loss (i.e., habitat erosion
+   proxy) with a small background floor ε. 
 6. **`06_cost_data`** — acquisition cost per EAU (Nolte 2020 FMV; 2%/yr inflation).
 
 **Data Panel Produced via Data Pipeline:**
@@ -102,9 +98,6 @@ and `solver_convergence.csv` (a per-run record of how often the per-solve time c
 | `trans_prob` | double | Per-period risk of habitat loss (transition probability), bounded [0, 1]. |
 | `cost` | double | Estimated acquisition cost of the EAU in nominal USD for that decision year. Scenario-invariant. |
 | cell_id | integer | Raster cell number in the EAU grid — the permanent by-place key linking each EAU to its location. Used to join land-cover data to the panel by position on the ground rather than by row order. NA for 2020 baseline and stationary rows, which are constructed from eau_id after the land-cover join and never carry the cell key. |
-
-
-    ***** UPDATE TRANS_PROB TO GROSS LOSS ONCE CHANGE IS COMPLETE: CHECK FOR CORRECTNESS ********
 
 
 **Modeling core:**

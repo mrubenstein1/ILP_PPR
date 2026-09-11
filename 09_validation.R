@@ -220,20 +220,3 @@ if (n_pass < n_tot) {
 } else {
   cat("  All correctness checks passed.\n")
 }
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# STUB — MDP comparison (DEFERRED)
-# ══════════════════════════════════════════════════════════════════════════════
-# An exact finite-horizon MDP over the joint landscape state is intractable here:
-# the state is the protected/unprotected (and converted) status of every EAU, so
-# the state space is ~3^n_eau — already astronomical beyond n_eau ~ 12-15, and
-# hopeless at 841. A like-for-like MDP benchmark would require either (a) a drastic
-# toy-sized landscape, or (b) per-EAU decomposition with an approximate value
-# function. Whether to pursue this is an open decision. The hook below documents
-# the intended interface so it can be filled in later without disturbing 07/08.
-#
-# run_mdp_optimal <- function(b_mat, lam_mat, cost_mat, budget, delta = DELTA) {
-#   stop("MDP comparison not implemented — see STUB note in 09__validation.R.")
-# }
-# ══════════════════════════════════════════════════════════════════════════════
