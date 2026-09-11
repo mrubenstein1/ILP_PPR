@@ -15,7 +15,7 @@
 # ps_t1 = ps_t - L + G, so that expression is (L - G) / ps_t -- the NET rate,
 # where L / ps_t was intended. The two agree only where G = 0.
 #
-# Diagnostic script 12 measured L and G separately at native FOREsce resolution
+# Diagnostic testing (see archive) measured L and G separately at native FOREsce resolution
 # and found, across the 879 modelled EAUs:
 #   * the net metric conceals 20.4% of all habitat conversion
 #   * it understates the landscape hazard by 25.6%

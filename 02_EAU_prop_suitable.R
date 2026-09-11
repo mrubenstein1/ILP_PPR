@@ -300,18 +300,8 @@ if (length(failures) > 0) {
 #
 # where L is area converting suitable -> unsuitable and G is area converting the
 # other way. The intended quantity is the GROSS rate, L / ps_t. The two agree only
-# where G = 0, and diagnostic script 12 established that they do not: across the
-# 879 modelled EAUs the net metric conceals 20.4% of all conversion, understates
-# the landscape hazard by 25.6%, and in four mid-century decade-RCP cells it
-# INVERTS THE SIGN -- reporting habitat gain where habitat is being lost.
-#
-# L and G cannot be recovered from prop_suitable. Section 2's resample-then-
-# difference nets them irreversibly, so they must be measured at native FOREsce
-# resolution by comparing a PAIR of years pixel by pixel. That is what this
-# section does. Section 2 is deliberately left untouched: prop_suitable is
-# unchanged, still drives benefit allocation, and its agreement with this section
-# is the logic check at the end.
-#
+# where G = 0. 
+
 # OUTPUT: derived_data/Lu_flows_{45,85}.csv, long, keyed by cell_id and year,
 # where `year` is the period the hazard attaches to (2020 -> 2090; 2100 is
 # terminal and has no successor).
@@ -356,8 +346,7 @@ N_CORES_FLOW <- 4L
 # it is a trap: INT1U's nodata code is 255, that code is a property of the FILE
 # whether or not anything is ever flagged with it, and it survives into the
 # resampled output. Any EAU whose summed flow count lands on exactly 255 pixels
-# comes back NaN. This silently destroyed 16 EAU-years in two separate script 12
-# runs before it was found. INT2U is not the escape either -- its code is 65535,
+# comes back NaN. INT2U is not the escape either -- its code is 65535,
 # which the coverage sums pass straight through.
 #
 # GENERAL RULE: do not store an intermediate in a type whose nodata code a
@@ -634,8 +623,7 @@ for (sfx in names(scenarios)) {
 # The 2026-09-09 run found 100 rows across 13 cells (of 1,169 with coverage)
 # where the residual reaches 2.07e-04 -- about 7 ha of a 34,223 ha EAU. Every one
 # of those 13 lies OUTSIDE the model panel, and the largest residual among cells
-# the model actually uses is 7.18e-08, consistent with script 12's independent
-# check A2 at 3.99e-08.
+# the model actually uses is 7.18e-08. 
 #
 # The mechanism is undiagnosed. It is some interaction between the two encodings
 # of "suitable" (others = NA here vs 0/1 in section 5) and the fractional weights

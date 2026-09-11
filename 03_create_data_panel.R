@@ -248,8 +248,7 @@ eau_panel <- eau_panel %>%
 # Script 05 needs the GROSS conversion rate, L / prop_suitable, where L is the
 # area converting suitable -> unsuitable in the decade. Differencing
 # prop_suitable gives only the NET change, (L - G) / prop_suitable, which
-# diagnostic script 12 showed conceals 20.4% of all conversion across the
-# modelled EAUs and inverts the sign of the hazard in four mid-century
+# conceals  conversion across the modelled EAUs and inverts the sign of the hazard in four mid-century
 # decade-RCP cells. L and G are therefore measured at native FOREsce resolution
 # in script 02 section 5 and read here.
 #
