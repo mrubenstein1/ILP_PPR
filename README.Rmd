@@ -120,8 +120,7 @@ and `solver_convergence.csv` (a per-run record of how often the per-solve time c
     - option to run model as "reproducible" lives here. Run single-thread + seeded
    (`REPRODUCIBLE <- TRUE`) for bit-reproducible reported numbers *and* a stable map
    footprint. 
-9. **`09_validation`** — correctness suite (P1–P5) plus a documented stub for the deferred
-   MDP comparison. Formulation tests run with spend-down off; the ordering test runs in the
+9. **`09_validation`** — correctness suite (P1–P5). Formulation tests run with spend-down off; the ordering test runs in the
    active mode.
 
 **Reporting / mapping:**
