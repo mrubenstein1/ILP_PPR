@@ -206,12 +206,11 @@ caps <- list(
     "**Per-parcel prevented-loss: rolling \u2212 myopic.** Blue: rolling invests",
     "here and prevents duck-pair loss; red: myopic invests here instead, securing",
     "absolute conservation benefit but relatively less than rolling. grey: no difference",
-    "Coloured cells sum to the value-added gap. Colour is capped",
-    "symmetrically at the 98th percentile of |\u0394V|."),
+    "Coloured cells sum to the value-added gap."),
   fig_benefit_map = paste(
     "**Duck-pair abundance across the PPR: 2020 baseline vs. 2100 under RCP 8.5 dry.**",
     "The 2020 panel is the shared cross-scenario baseline common to all five scenarios",
-    "\u2014 only the 2100 panel is scenario-specific. One tile = one EAU; outlines are WMDs."),
+    "\u2014 only the 2100 panel is scenario-specific. One tile = one EAU."),
   fig_benefit_ribbon = paste(
     "**Per-EAU duck-pair abundance to 2100, by scenario.** Solid line = median",
     "across EAUs; dark band = interquartile range; light band = 10th\u201390th percentile.",
@@ -223,7 +222,7 @@ caps <- list(
     "background conversion floor."),
   fig_cost_map = paste(
     "**Acquisition cost per hectare, 2020 USD.** Raw dollars, no log transform, grouped",
-    "into six equal-count classes so contrast is spread across the region.")
+    "into six equal-count classes.")
 )
 ```
 
@@ -265,7 +264,7 @@ periods** and **5 scenarios** (RCP 4.5/8.5 × wet/dry, plus a stationary null).
 
 - **Risk**: FOREsce (derived). Sohl, Terry L., et al. "Spatially explicit land-use and land-cover scenarios for the Great Plains of the United States." Agriculture, Ecosystems & Environment 153 (2012): 1-15.
   - calculated as net suitable habitat loss per time step. 
-  - note this has RCP 4.5 & 8.5 scenarios, but no wet/dry. 
+  - note this has RCP 4.5 & 8.5 scenarios, but no wet/dry difference. 
   
 # Model Notes
 
@@ -288,7 +287,7 @@ only their survivial-discounted value.
 ## Descriptive Summary
 
 ### Duck distribution
-Consistent with other studies, duck abundance is higher in the western portion of the PPR than the eastern portion. This overall distribution pattern continues through 2100. 
+Consistent with other studies (e.g., McKenna et al, 2026), duck abundance is higher in the western portion of the PPR than the eastern portion. This overall distribution pattern continues through 2100 (Fig. 1). In all scenarios, duck abundance is predicted to decline across the PPR by 2100, although wet scenarios fare better than dry scenarios (Fig. 2).
 ```{r}
 #| label: fig-benefit-map
 #| fig-cap: !expr caps$fig_benefit_map
@@ -296,7 +295,7 @@ Consistent with other studies, duck abundance is higher in the western portion o
 #| eval: !expr desc_maps_ok
 knitr::include_graphics(file.path(OUT_DIR, "map_benefit_2020_2100.png"))
 ```
-In all scenarios, duck abundance is predicted to decline across the PPR by 2100, although wet scenarios fare better than dry scenarios.
+
 ```{r}
 #| label: fig-benefit-ribbon
 #| fig-cap: !expr caps$fig_benefit_ribbon
@@ -309,7 +308,7 @@ knitr::include_graphics(file.path(OUT_DIR, "fig_benefit_ribbon.png"))
 
 
 ### Risk
-Risk of conversion across all EAUs is heavily skewed, with the vast majority of EAUs showing a nearly zero per period conversion risk [UPDATE THIS WITH NEW SUMMARY VALUES ONCE THE GROSS VS NET CONVERSION IS COMPLETE]. There is a drop in 2050 in per period conversion risk: this is a function of the FOREsce projection, which frontloads cropland conversion through 2050, at which point conversions to cropland decline.
+Risk of conversion across all EAUs is heavily skewed, with the vast majority of EAUs showing a nearly zero per period conversion risk; the maximum per period conversion risk for a given EAU is ~15%. There is a sharp drop in per period conversion risk in 2050, which is a function of the FOREsce model: cropland conversion is frontloaded through 2050, at which point conversions to cropland decline.
 
 ```{r}
 #| label: fig-risk-box
@@ -323,7 +322,7 @@ knitr::include_graphics(file.path(OUT_DIR, "fig_risk_box.png"))
 
 
 ### Cost
-Acquisition cost per hectare. High cost parcels are concentrated in the eastern portion of the PPR, consistent with other analyses [CITATION]. 
+Acquisition cost per hectare in USD 2020. High cost parcels are concentrated in the eastern portion of the PPR, consistent with other analyses (e.g., Ando and Mallory, 2012). 
 
 ```{r}
 #| label: fig-cost-map
@@ -348,9 +347,11 @@ cat("*(Descriptive figures not generated \u2014 the inputs panel was absent when
 
 ## Acquisition value over baseline
 
-This table compares the total benefit secured across the landscape (2020-2100) via three different acquisition policies (rolling, myopic, and greedy) with a "do-nothing" baseline scenario in which no parcels are acquired. All acquisition policies outperform the do-nothing baseline under climate change scenarios; [DESCRIBE WHETHER THERE IS AN IMPROVEMENT UNDER STATIONARITY, ONCE THE GROSS V NET LOSS CHANGE IS COMPLETE]. 
+This table compares the total benefit secured across the landscape (2020-2100) via three different acquisition policies (rolling, myopic, and greedy) against a "do-nothing" baseline scenario in which no parcels are acquired. All acquisition policies outperform the do-nothing baseline under climate change scenarios; there is no improvement under assumptions of stationarity (as expected: stationarity freezes conversion risk to effectively zero). 
 
-The rolling policy outperforms the myopic and greedy policies under all climate scenarios, consistent with our expectations that an acquisition policy with foresight should outperform a policy with no or limited foresight. [PROVIDE STATS ON HOW MUCH IMPROVEMENT EACH POLICY PROVIDES, IN EITHER TOTAL DUCK PAIRS OR IN %]
+Even a greedy acquisition policy outperforms a do-nothing policy; myopic and rolling policies each respectively improve upon that baseline. As expected based on the duck density projections, wet/dry scenario is a larger determinant of improvement than RCP scenario (see Fig. 6). 
+
+Overall improvement of any acquisition policy, expressed in % over baseline, is relatively small (0.52% at best). This is likely an artifact of how conversion risk is being calculated in this model (a measure of habitat erosion standing in for habitat conversion probability). That said, these numbers might not be that different from real world estimates: Kemnick et al 2023 estimated that the program impact for SWAP was "an avoided loss between 0.00% and 0.02% of the carrying capacity for broods and breeding waterfowl from 2008–2017."
 
 ```{=latex}
 \needspace{13\baselineskip}   % keep this whole table on one page (moves to next page if it won't fit)
@@ -366,15 +367,12 @@ style_grouped_table(
 
 ## Gap: Foresight vs. Myopic/Greedy
 
-This table compares the gap between total benefit secured across the landscape (2020-2100) in the greedy or myopic policy as compared to the rolling policy. The rolling policy is used as the provably near-optimal benchmark (MIP gap 0.01% across all rolling solves); this table presents the gap in cumulative duck pairs conserved under greedy/myopic policies as compared to that near-optimal benchmark. 
+This table compares the gap between total benefit secured across the landscape (2020-2100) in the greedy or myopic policy as compared to the rolling policy. The rolling policy is used as the provably near-optimal benchmark (MIP gap 0.01% across all rolling solves). As expected, the greedy policy displays a larger gap with the near-optimal rolling policy than the myopic policy under all climate scenarios. Myopic underperforms optimal by ~17-19%; greedy underperforms optimal at around ~30%. Under stationarity, there is virtually no difference (as expected). 
 
-As expected, the greedy policy displays a larger gap than the myopic policy under all climate scenarios. Myopic underperforms optimal by approx. %20-22; greedy underperforms optimal at around ~30%. Under stationarity, there is virtually no difference (as we would expect). 
+This "value added gap" is the metric of greatest interest, since it describes the performance of near optimal conservation policy as compared to a greedy (i.e., status quo) or marginally improved policy. The rolling policy outperforms the myopic and greedy policies under all climate scenarios, consistent with our expectations that an acquisition policy with foresight should outperform a policy with no or limited foresight. 
 
-This "value added gap" becomes our metric of greatest interest: because the absolute value of any acquisition policy in this landscape is relatively low, this metric helps demonstrate the value of foresight in acquisition policy. My interpretation: As compared to the best possible acquisition policy, how well does the greedy or myopic policy perform? How much conservation does a suboptimal acquisition policy leave on the table?
+**Highlight: A non-stationary, climate-aware acquisition policy would deliver a 33-36% improvement in conservation outcomes as compared to the greedy (i.e., status quo) acquisition policy in use today**. 
 
-```{=latex}
-\needspace{16\baselineskip}   % keep this whole table (incl. its footnote) on one page
-```
 
 ```{r}
 #| label: tbl-gap-vs-rolling
@@ -390,10 +388,6 @@ style_grouped_table(
 ## Value added gap over time
 
 This graph shows how the gap between the rolling policy and the myopic/greedy policies grows over time. This is presented as net changes in duck pairs, using the rolling policy as a benchmark (value added gap for rolling = 0). As expected, the cumulative gap in performance between rolling and greedy/myopic grows over time (positive values only); and greedy is substantially worse than myopic (red always > yellow). 
-
-One counter-intuitive observation: the performance between different acquisition policies looks to be more important under wet scenarios than under dry. More ducks are "failed to be conserved" under wet scenarios than under dry; I would have thought the opposite (dry scenarios drive more decline in ducks, so shouldn’t an optimal acquisition schedule produce a larger gap under dry scenarios?).
-
-[I think this might be driven by the fact that land use conversion is the same across wet/dry scenarios (see Q4 below.). And/or: is this just because there are more ducks overall in wet scenarios? if we displayed shortfall as a % of the total duck population, would we see the difference?]
 
 
 ```{r}
@@ -445,9 +439,7 @@ cat("*(Maps not generated — the spatial schedule was absent when",
 
 ## Value added gap by policy: rolling vs myopic
 
-This map shows how rolling and myopic acquisition schedules differ in where and how they prevent duck loss. Cells are highlighted where myopic and rolling schedules differ in acquisition decisions. Blue cells show where the rolling acquisition schedule acquired parcels but myopic did not; this represents addition ducks secured through foresight. Red cells show where the myopic schedule acquired parcels that the rolling schedule ignored; this represents a sub-optimal allocation of budget. 
-
-Darker shades of blue are parcels with higher duck density. Darker shades of red indicate parcels where the difference between realized and potential loss is greater.  
+This map shows how rolling and myopic acquisition schedules differ in where and how they prevent duck loss. Cells are highlighted where myopic and rolling schedules differ in acquisition decisions. Blue cells show where the rolling acquisition schedule acquired parcels but myopic did not; this represents addition ducks secured through foresight. Red cells show where the myopic schedule acquired parcels that the rolling schedule ignored; this represents a sub-optimal allocation of budget. Darker shades of blue are parcels with higher duck density. Darker shades of red indicate parcels where the difference between realized and potential loss is greater.  
 
 Take away: this map show the spatial distribution of how the two models allocated their identical budget differently. The rolling model invested in parcels that maximized benefit by 2100; the myopic invested in parcels that secured real duck pairs (no loss, only gain), but underperformed the rolling benchmark. 
 
@@ -469,63 +461,42 @@ knitr::include_graphics(file.path(OUT_DIR, "prevented_loss_diff.png"))
      them. They still use the house table style and auto-number after the others. -->
 ```
 
-### 7/30/2026: Spatial Join error
-I discovered an error in the spatial join of the extracted land cover data and the model's data panel. I realized that the landcover data was joined to EAUs by row position, which introduced errors- land classification (% suitable habitat) was joined to the wrong EAUs. Conversion risk (hazard) was the variable most affected- the trans_prob were not attached to the correct spatial unit. Because duck density is distributed according to % suitable, it also meant that duck distributions were incorrect- but the scale of this error was mitigated by the fact that WMD-scale determines the absolute amount of duck density. This meant that WMD level abundance numbers are fine, but distribution within WMD to EAUs was incorrect; cost numbers are unaffected. 
+### 9/30/2026: Protected Area Removal
 
-Because of this, I had incorrectly believed that most of the EAUs with missing landcover data were concentrated in Winsom, which is why I removed it- but I discovered that this wasn’t actually the case, there are multiple WMDs with at least a few EAUs missing data.  I decided to make a cap of 20% (any WMD missing 20% of EAU land cover data would be excluded); the others have slightly inflated duck numbers in their remaining EAUs. 
+In examining the conversion risk, we realized that the previous conversion risk included protected area in the total pool of potentially available habitat, which artificially diluted the estimated conversion risk. To address this, I overlayed the USGS Protected Area Database (PADUS) and calculated the gross suitable habitat loss with protected areas removed. This revised gross suitable habitat rate was used in the risk of loss calculation (i.e., script 05); however, the other uses of landcover data (such as distributing waterfowl density within a WMD) continue to use the unmasked raster with protected areas included. 
 
-A few interesting findings:
-- spatial distribution of duck abundance is now more clearly aligned with McKenna 2026 (good news!)
-- there is now a clearer alignment of duck abundance and LOW acquisitoin cost: this is more consistent with the literature, and also means that greedy starts performing slightly better than before. (gap in value add vs rolling =20%; it was about 40% before)
-- but interestingly, the value added of rolling vs myopic increases: we are now looking at ~20% improvement, not ~15%. 
+To overlay the PADUS layer, I used the PAD-US 4.1 Vector Analysis (USGS GAP, 2024, PAD-US 4.1, https://doi.org/10.5066/P96WBCHS) and masked out polygons marked as GAP Status Code 1-3 (which covers areas with permanent protection, like National Parks, and areas where "low intensity" land uses is allowed). I then created a 0/1 raster of protected land within the PPR, and removed those areas when calculating the gross habitat loss. 
 
-### 8/31/2026: Conversion Risk
+Updating the conversion risk to exclude protected areas increases the comparative performance of the optimal model over the greedy model by ~3-4 percentage points; it's noticeable, but not a fundamental change to the takeaway message. 
 
-# Net vs Loss Habitat loss:
+
+### 9/15/2026: Conversion Risk Update: Net vs Gross Habitat loss:
 Delving in to my calculations of how I quantify conversion risk, I realized that I was using net rather than gross habitat loss- this was not conceptually consistent with what I presented, which I intended to be the proportion of suitable habitat in time t that was lost by time t+1 (a flow). Instead, I had calculated the difference between the stock of suitable habitat in time t - t+1, which could be altered by any gains in suitable habitat. 
 
 I changed the calculations to see how this would affect the estimate of conversion risk, and it was fairly substantial- there is a fair amount of habitat recovery in the FOREsce models, so some of those habitat gains were concealing real habitat losses. The table below compares the net vs gross habitat loss rate (gross > net in all decades but particularly mid-century). In addition, the use of the gross metric in the first model run meant that some EAUs had a "positive" habitat loss (i.e., overall habitat gain), which I corrected for by imposing a data-derived epsilon (floor). With the net metric, that is no longer needed (net loss >= 0). The table also shows the percent of EAUs that were "censored" by the artifical floor (i.e., which really had habitat loss but which was hidden by habitat gain). 
 
-| Decade | gross | net | ratio | % of EAUs censored |
+| Decade | gross | net | % of EAUs censored |
 |---|---|---|---|---|
-| 2020–2040 | ~0.018 | ~0.017 | 1.02–1.27 | 0.5–7% |
-| **2050–2070 (4.5)** | ~0.002 | 0.0009 → **−0.0003** | 2.2 → 4.5 → **NA** | **14–17%** |
-| **2050–2070 (8.5)** | ~0.002 | **−0.0033, −0.0009, −0.0013** | **all NA** | **16–24%** |
-| 2080–2090 | ~0.003 | ~0.002 | ~1.27 | ~4% |
+| 2020–2040 | ~0.018 | ~0.017 |  0.5–7% |
+| **2050–2070 (4.5)** | ~0.002 | 0.0009 | **14–17%** |
+| **2050–2070 (8.5)** | ~0.002 | −0.0009 | **16–24%** |
+| 2080–2090 | ~0.003 | ~0.002 | ~4% |
+
+While we clearly were missing meaningful habitat loss by using the net metric, changing to the gross metric doesn't change the underlying finding- updating the measure of habitat loss increased the performance of rolling over greedy by ~1-2 percentage points. 
+
+### 7/30/2026: Spatial Join error
+I discovered an error in the spatial join of the extracted land cover data and the model's data panel. I realized that the landcover data was joined to EAUs by row position, which introduced errors- land classification (% suitable habitat) was joined to the wrong EAUs. Conversion risk (hazard) was the variable most affected- the trans_prob were not attached to the correct spatial unit. Because duck density is distributed according to % suitable, it also meant that duck distributions were incorrect- but the scale of this error was mitigated by the fact that WMD-scale determines the absolute amount of duck density. This meant that WMD level abundance numbers are fine, but distribution within WMD to EAUs was incorrect; cost numbers are unaffected. 
+
+Because of this, I had incorrectly believed that most of the EAUs with missing landcover data were concentrated in Winsom, which is why I removed it- but I discovered that this wasn’t actually the case. There were in fact multiple WMDs with at least a few EAUs missing data.  I decided to make a cap of 20% (any WMD missing 20% of EAU land cover data would be excluded); the others have slightly inflated duck numbers in their remaining EAUs. 
+
+A few interesting findings:
+- spatial distribution of duck abundance is now more clearly aligned with McKenna 2026 (good news!). Compare Fig. 1 with Fig. 1 from "results_07302026"
+- there is now a clearer alignment of duck abundance and LOW acquisition cost: this is more consistent with the literature, and also means that greedy starts performing slightly better than before. 
+- but the major findings don't change at all (i.e., rolling outperforms both myopic and greedy, overall acquisition rate remains low)
 
 
-
-
-**** include the GROSS VS NET SCATTER PLOT FROM THE DIAGNOSTIC (SCRIPT 12)
-
-
-# Reference: Literature-derived
-- Doherty et al 2018:  
-  - 0.57% per year wetland loss in the Prairie Coteau ecoregion in Minnesota 
-  - 1.33% of grasslands were lost per year during 1979–1997 across the entire United States Prairie Pothole Region 
-
-- Rashford et al 2011:  
-  - 1.33% of grasslands were lost (converted to cultivated crops) per year during 1979–1997 across the entire United States Prairie Pothole Region 
-
-- Oslund et al 2011: 
-  - Wetland change in MN from 1980-2007: 4.3% loss in total wetland area across MN PPR.  
-  - Kemnick et al 2023: Wetland drainage rates: upper & lower bound (0.57% and 0.09%/year); from Dahl, 2014; Oslund et al., 2010 
-  
-Compare this to current net habitat proxy rates:
-  - mean: 0.47%
-  - median: .0000361%
-  - max: 12%
-
-Expectation: a uniform conversion risk estimate will flatten out regional differences, and close the gap between myopic and rolling (it essentially confirms myopic assumption of stationarity).
-
-Potential path forward: take an approach similar to Kemnick et al 2023: use literature-derived estimates as a landscape total, and use landscape characteristics (i.e., wetland size, surrounding cropland) as a way to rank relatively.
-
-Kemink, Kaylan M., et al. "Quantifying population-level conservation impacts for a perpetual conservation program on private land." Journal of Environmental Management 345 (2023): 118748.
 
 {{< pagebreak >}}
-
-
-
 
 
 
@@ -606,8 +577,5 @@ style_grouped_table(align_gap, groups_gap, subs_gap,
 {{< pagebreak >}}
 
 
-
-# Wet/dry scenarios for land use
-The FOREsce model used to provide landcover classification is the FOREsce GCAM reference scenario. It is provided in RCP 4.5, 8.5, and mean climate scenarios- but there is no wet/dry distinction. For the time being, I have just kept land cover constant across wet/dry scenarios while preserving the 4.5/8.5 distinction. What this means is that only abundance varies across wet/dry scenarios- proportional allocation of ducks within WMDs does not, nor does conversion risk. This isn’t ideal, but I thought it could be a limitation we could live with- but I think it may come out when looking at duck loss prevented by scenario.  I’m not fully sure how to address or whether it’s worth pursuing an alternate data source. 
 
  

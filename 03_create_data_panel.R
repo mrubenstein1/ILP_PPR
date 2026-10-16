@@ -282,8 +282,10 @@ eau_flows <- bind_rows(
   # identical() comparison, including the year check further down.
   mutate(cell_id = as.integer(cell_id), year = as.integer(year)) %>%
   inner_join(eau_meta, by = "cell_id") %>%      # by raster cell number, as above
-  filter(!is.na(prop_lost), !is.na(prop_gained)) %>%
-  select(eau_id, wmd_id, year, rcp, prop_lost, prop_gained) %>%
+  filter(!is.na(prop_lost), !is.na(prop_gained),
+         !is.na(prop_lost_unprot), !is.na(prop_suit_unprot)) %>%
+  select(eau_id, wmd_id, year, rcp, prop_lost, prop_gained,
+         prop_lost_unprot, prop_suit_unprot) %>%
   arrange(rcp, year, eau_id)
 
 cat(sprintf("\n  Gross flows loaded: %d rows | %d EAUs | years %d-%d | RCPs %s\n",
@@ -312,7 +314,8 @@ flow_checks <- list(
   "Every year x RCP has the full EAU set" =
     all(flow_complete$n_eau == length(panel_eaus)),
   "Flows are non-negative" =
-    min(eau_flows$prop_lost) >= 0 && min(eau_flows$prop_gained) >= 0
+    min(eau_flows$prop_lost) >= 0 && min(eau_flows$prop_gained) >= 0 &&
+    min(eau_flows$prop_lost_unprot) >= 0 && min(eau_flows$prop_suit_unprot) >= 0
 )
 
 for (nm in names(flow_checks))

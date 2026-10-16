@@ -1,10 +1,11 @@
 ### Transition Probability (Risk of Loss) ####
 #
 # Operationalization:
-#   trans_prob[i, r, t] = max(epsilon, prop_lost[i, r, t] / prop_suitable[i, r, t])
+#   trans_prob[i, r, t] = max(epsilon, prop_lost_unprot[i, r, t] / prop_suit_unprot[i, r, t])
 #
-# This is the GROSS conversion rate: of the habitat standing at t, what fraction
-# converts to unsuitable by t+1.
+# This is the GROSS conversion rate: of the UNPROTECTED habitat standing at t,
+# what fraction converts to unsuitable by t+1. Protected land (PAD-US GAP 1-3,
+# script 02 section 4b) cannot convert and is excluded from numerator and denominator.
 #
 # ── WHY GROSS AND NOT NET ─────────────────────────────────────────────────────
 # This script previously differenced prop_suitable:
@@ -39,6 +40,7 @@
 #
 # Special cases:
 #   prop_suitable[t] = 0  : trans_prob = 0 (no habitat, no conservation urgency)
+#   prop_suit_unprot[t] = 0 < prop_suitable[t] : trans_prob = epsilon (all habitat protected)
 #   t = 2100 (terminal)   : trans_prob = 0 (no subsequent decision period)
 #   Stationary scenario   : trans_prob = epsilon (background risk applies)
 #   2020 baseline row     : mean of RCP 4.5 and 8.5 2020→2030 transitions
@@ -155,9 +157,8 @@ ps_2020 <- prop_ts %>%
 
 trans_2020_raw <- eau_flows %>%
   filter(year == 2020L, rcp %in% c("45", "85")) %>%
-  select(eau_id, year, rcp, prop_lost) %>%
-  left_join(ps_2020, by = "eau_id") %>%
-  mutate(trans_raw = gross_proportional_loss(ps_start, prop_lost)) %>%
+  select(eau_id, year, rcp, prop_lost_unprot, prop_suit_unprot) %>%
+  mutate(trans_raw = gross_proportional_loss(prop_suit_unprot, prop_lost_unprot)) %>%
   select(eau_id, year, rcp, trans_raw)
 
 
@@ -169,12 +170,12 @@ trans_2020_raw <- eau_flows %>%
 
 trans_future_raw <- prop_ts %>%
   filter(rcp %in% c("45", "85"), year >= 2030) %>%
-  left_join(eau_flows %>% select(eau_id, year, rcp, prop_lost),
+  left_join(eau_flows %>% select(eau_id, year, rcp, prop_lost_unprot, prop_suit_unprot),
             by = c("eau_id", "year", "rcp")) %>%
   mutate(
     trans_raw = case_when(
       year == 2100 ~ 0,    # terminal period: no next decision
-      TRUE         ~ gross_proportional_loss(prop_suitable, prop_lost)
+      TRUE         ~ gross_proportional_loss(prop_suit_unprot, prop_lost_unprot)
     )
   ) %>%
   select(eau_id, year, rcp, trans_raw)
@@ -400,7 +401,8 @@ identity_resid <- prop_ts %>%
   mutate(ps_next = lead(prop_suitable)) %>%
   ungroup() %>%
   filter(!is.na(ps_next)) %>%          # drops 2100, which has no successor
-  left_join(eau_flows %>% select(eau_id, year, rcp, prop_lost, prop_gained),
+  left_join(eau_flows %>% select(eau_id, year, rcp, prop_lost, prop_gained,
+                                 prop_suit_unprot),
             by = c("eau_id", "year", "rcp")) %>%
   mutate(resid = ps_next - (prop_suitable - prop_lost + prop_gained))
 
@@ -417,7 +419,9 @@ checks <- list(
   "Gross loss is never negative"                       = nrow(negative_raw) == 0,
   "Stock identity survives the join chain"             =
     is.finite(max_identity_resid) && max_identity_resid < IDENTITY_TOL &&
-    n_identity_na == 0
+    n_identity_na == 0,
+  "Unprotected habitat <= prop_suitable (join chain)" =
+    !any(identity_resid$prop_suit_unprot > identity_resid$prop_suitable + 1e-3)
 )
 
 for (nm in names(checks)) {

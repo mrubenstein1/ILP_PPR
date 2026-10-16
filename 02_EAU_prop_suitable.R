@@ -289,6 +289,59 @@ if (length(failures) > 0) {
 }
 
 
+  ##### 4b. Protected-area mask (PAD-US) ##########
+
+# 0/1 raster of protected land (PAD-US 4.1 Vector Analysis, GAP 1-3) on the
+# native FOREsce 30 m grid, cropped to the EAU extent. Used ONLY by section 5 to
+# compute gross loss on unprotected habitat; benefit and cost are unaffected.
+# FWS WPA wetland easements are GAP 4 in PAD-US and are not masked. Static
+# snapshot applied to all years. Rebuilt on every run.
+# Source: USGS GAP, 2024, PAD-US 4.1, https://doi.org/10.5066/P96WBCHS
+
+PADUS_GDB   <- file.path(DIR_IN, "PADUS4_1VectorAnalysis_PADUS_Only",
+                         "PADUS4_1VectorAnalysis_PADUS_Only.gdb")
+PADUS_LAYER <- "PADUS4_1VectorAnalysis_PADUS_Only_Simp_SingP"
+GAP_KEEP    <- c("1", "2", "3")
+prot_mask_path <- file.path(DIR_DERIVED, "padus_protected_mask_30m.tif")
+
+#1. Template: FOREsce grid cropped to the EAU extent -- the same crop section 5
+#   applies, so geometries match (the worker verifies with compareGeom).
+tmpl <- crop(rast(rast(file.path(meanclim_path, meanclim_fname))), ext(aoi_mask))
+
+#2. PAD-US polygons in the extent (5 km buffer), filtered to GAP 1-3.
+pad <- vect(PADUS_GDB, layer = PADUS_LAYER, extent = extend(ext(tmpl), 5000))
+gap_fld <- grep("^gap_sts$", names(pad), ignore.case = TRUE, value = TRUE)
+if (length(gap_fld) != 1)
+  stop("GAP status field not found. Fields: ", paste(names(pad), collapse = ", "))
+gap <- trimws(as.character(values(pad)[[gap_fld]]))
+cat("\nPAD-US polygons in extent, by GAP status:\n"); print(table(gap, useNA = "ifany"))
+
+pad <- pad[gap %in% GAP_KEEP, ]
+if (!same.crs(pad, tmpl)) pad <- project(pad, crs(tmpl))
+pad <- crop(pad, ext(tmpl))                  # clip to grid so areas are comparable
+poly_km2 <- sum(expanse(pad, unit = "km"))
+
+#3. Rasterize: 1 = protected, 0 otherwise (no NA). INT1U's nodata code (255)
+#   cannot collide with 0/1.
+prot <- rasterize(pad, tmpl, background = 0, touches = FALSE,
+                  filename = prot_mask_path, overwrite = TRUE,
+                  wopt = list(datatype = "INT1U", gdal = "COMPRESS=DEFLATE"))
+
+#4. Logic check.
+mm <- minmax(prot)
+rast_km2 <- global(prot, "sum")[[1]] * prod(res(prot)) / 1e6
+prot_checks <- list(
+  "Mask geometry equals template"         = compareGeom(prot, tmpl, stopOnError = FALSE),
+  "Mask values in {0, 1}, some protected" = mm[1] == 0 && mm[2] == 1,
+  "Raster area within 5% of polygon area" = abs(rast_km2 / poly_km2 - 1) < 0.05
+)
+for (nm in names(prot_checks))
+  cat(sprintf("  %s  %s\n", if (prot_checks[[nm]]) "[PASS]" else "[FAIL]", nm))
+cat(sprintf("  Protected (GAP 1-3): polygons %.0f km2 | raster %.0f km2\n", poly_km2, rast_km2))
+if (!all(unlist(prot_checks))) stop("Protected mask failed its logic checks.")
+rm(pad, prot, tmpl)
+
+
   ##### 5. Gross habitat flows (loss and gain) per year-pair ##########
 
 # WHY THIS SECTION EXISTS
@@ -301,6 +354,9 @@ if (length(failures) > 0) {
 # where L is area converting suitable -> unsuitable and G is area converting the
 # other way. The intended quantity is the GROSS rate, L / ps_t. The two agree only
 # where G = 0. 
+#
+# PAD-US: the worker also emits loss and suitable habitat on UNPROTECTED pixels
+# (GAP 1-3 mask, section 4b); script 05 builds the hazard from those.
 
 # OUTPUT: derived_data/Lu_flows_{45,85}.csv, long, keyed by cell_id and year,
 # where `year` is the period the hazard attaches to (2020 -> 2090; 2100 is
@@ -351,8 +407,8 @@ N_CORES_FLOW <- 4L
 #
 # GENERAL RULE: do not store an intermediate in a type whose nodata code a
 # legitimate value can equal.
-decompose_flows <- function(path_t, path_t1, mask_path, classes, scf, n_cells,
-                            label, memfrac = NULL, progress_file = NULL) {
+decompose_flows <- function(path_t, path_t1, mask_path, prot_path, classes, scf,
+                            n_cells, label, memfrac = NULL, progress_file = NULL) {
 
   t0 <- Sys.time()
 
@@ -363,6 +419,7 @@ decompose_flows <- function(path_t, path_t1, mask_path, classes, scf, n_cells,
   if (!is.null(memfrac)) terra::terraOptions(memfrac = memfrac)
 
   aoi  <- terra::rast(mask_path)          # re-opened per worker, never inherited
+  prot <- terra::rast(prot_path)          # PAD-US 0/1 mask, 30 m (section 4b)
   r_t  <- terra::rast(path_t)
   r_t1 <- terra::rast(path_t1)
 
@@ -376,22 +433,33 @@ decompose_flows <- function(path_t, path_t1, mask_path, classes, scf, n_cells,
   # PASS 1 -- one crop over both years.
   s <- terra::crop(c(r_t, r_t1), aoi)
 
-  # PASS 2 -- one arithmetic pass emitting all three native layers. The
+  # Mask was built on this cropped grid (4b); a mismatch would mis-register it.
+  if (!terra::compareGeom(s, prot, stopOnError = FALSE))
+    stop("Protected mask geometry does not match the cropped FOREsce grid (",
+         basename(path_t), "). Re-run section 4b.")
+  s <- c(s, prot)
+
+  # PASS 2 -- one arithmetic pass emitting all five native layers. The
   # complements and products never become separate rasters; they are transient
   # vectors inside the chunk callback.
+  # Protection is read as 0/1, not via NA (NA DISCIPLINE); NA counts as unprotected.
   flow <- terra::lapp(
     s,
-    fun = function(a, b) {
+    fun = function(a, b, p) {
       ok  <- !is.na(a) & !is.na(b)
       st  <- as.integer(a %in% classes & ok)
       st1 <- as.integer(b %in% classes & ok)
-      cbind(st * (1L - st1) * as.integer(ok),   # lost:   suitable -> unsuitable
+      unp <- as.integer(!(!is.na(p) & p == 1))  # 1 = unprotected
+      lost <- st * (1L - st1) * as.integer(ok)
+      cbind(lost,                               # lost:   suitable -> unsuitable
             (1L - st) * st1 * as.integer(ok),   # gained: unsuitable -> suitable
-            as.integer(ok))                     # coverage
+            as.integer(ok),                     # coverage
+            lost * unp,                         # lost, unprotected pixels only
+            st * unp)                           # suitable at t, unprotected only
     }
     # No datatype request -- see NA DISCIPLINE above.
   )
-  names(flow) <- c("lost", "gained", "cover")
+  names(flow) <- c("lost", "gained", "cover", "lost_unprot", "suit_unprot")
 
   # PASS 3 -- one multi-layer resample, then scale and mask. method = "sum" and
   # NOT aggregate(): section 2 uses resample-sum, and the stock-identity check
@@ -400,23 +468,25 @@ decompose_flows <- function(path_t, path_t1, mask_path, classes, scf, n_cells,
                            wopt = list(datatype = "FLT8S"))
   props <- terra::mask(agg / scf, aoi)
 
-  v <- terra::values(props, na.rm = FALSE)      # n_cells x 3, order as named
+  v <- terra::values(props, na.rm = FALSE)      # n_cells x 5, order as named
 
   # Missingness applied HERE, from the coverage count, not from a raster sentinel.
   no_cover <- !is.finite(v[, 3]) | v[, 3] <= 0
-  v[no_cover, 1:2] <- NA_real_
+  v[no_cover, c(1:2, 4:5)] <- NA_real_
 
   out <- data.frame(
-    cell_id     = seq_len(n_cells),
-    prop_lost   = v[, 1],
-    prop_gained = v[, 2],
-    prop_cover  = v[, 3]
+    cell_id          = seq_len(n_cells),
+    prop_lost        = v[, 1],
+    prop_gained      = v[, 2],
+    prop_cover       = v[, 3],
+    prop_lost_unprot = v[, 4],
+    prop_suit_unprot = v[, 5]
   )
 
   # Values are extracted; drop the handles so terra releases the backing temp
   # files before the next pair starts. Concurrent workers would otherwise leave
   # tempdir() growing monotonically for the whole run.
-  rm(v, props, agg, flow, s, r_t, r_t1, aoi)
+  rm(v, props, agg, flow, s, r_t, r_t1, aoi, prot)
   invisible(gc(verbose = FALSE))
 
   secs <- as.numeric(difftime(Sys.time(), t0, units = "secs"))
@@ -467,11 +537,11 @@ n_flow_pairs <- nrow(flow_pairs)
 #6. Scratch-space preflight. This job spills native-resolution intermediates to
 #   tempdir() and the failure mode is ugly: a worker dies out-of-space an hour in.
 #   The requirement is computable rather than guessable, so check it first.
-#   Per pair: 2 source layers at 1 byte + 3 flow layers at 4 bytes, plus 30% for
-#   transients and compression scratch.
+#   Per pair: 3 source layers (two years + protected mask) at 1 byte + 5 flow
+#   layers at 4 bytes, plus 30% for transients and compression scratch.
 flow_tmp      <- terra::terraOptions(print = FALSE)$tempdir
 flow_px       <- as.numeric(n_cells) * scf
-flow_gb_pair  <- flow_px * (2 * 1 + 3 * 4) * 1.3 / 1024^3
+flow_gb_pair  <- flow_px * (3 * 1 + 5 * 4) * 1.3 / 1024^3
 flow_gb_need  <- flow_gb_pair * N_CORES_FLOW
 
 flow_gb_free <- tryCatch({
@@ -518,6 +588,7 @@ run_flow_pair <- function(k) {
       path_t        = p$path_t,
       path_t1       = p$path_t1,
       mask_path     = file.path(DIR_DERIVED, "foresce_eau_shared_mask.tif"),
+      prot_path     = prot_mask_path,
       classes       = SUITABLE_CLASSES,
       scf           = scf,
       n_cells       = n_cells,
@@ -542,7 +613,8 @@ if (N_CORES_FLOW <= 1L) {
     parallel::clusterExport(
       cl_flow,
       varlist = c("decompose_flows", "flow_pairs", "DIR_DERIVED",
-                  "SUITABLE_CLASSES", "scf", "n_cells", "flow_memfrac", "flow_log"),
+                  "SUITABLE_CLASSES", "scf", "n_cells", "flow_memfrac", "flow_log",
+                  "prot_mask_path"),
       envir = environment()
     )
     parallel::parLapplyLB(cl_flow, seq_len(n_flow_pairs), run_flow_pair)
@@ -584,13 +656,16 @@ flow_long <- do.call(rbind, lapply(seq_len(n_flow_pairs), function(k) {
     prop_lost   = d$prop_lost,
     prop_gained = d$prop_gained,
     prop_cover  = d$prop_cover,
+    prop_lost_unprot = d$prop_lost_unprot,
+    prop_suit_unprot = d$prop_suit_unprot,
     stringsAsFactors = FALSE
   )
 }))
 
 for (sfx in names(scenarios)) {
   d <- flow_long[flow_long$rcp == sfx, ]
-  d <- d[order(d$year, d$cell_id), c("cell_id", "year", "prop_lost", "prop_gained")]
+  d <- d[order(d$year, d$cell_id), c("cell_id", "year", "prop_lost", "prop_gained",
+                                     "prop_lost_unprot", "prop_suit_unprot")]
   f <- file.path(DIR_DERIVED, paste0("Lu_flows_", sfx, ".csv"))
   write.csv(d, f, row.names = FALSE)
   cat(sprintf("  %s  (%d rows, %d cells x %d periods)\n",
@@ -693,6 +768,42 @@ print(flow_resid, row.names = FALSE)
 
 edge_frac <- max(flow_resid$n_over_tol) / n_covered
 
+# ── Unprotected layers (PAD-US) ───────────────────────────────────────────────
+# Unprotected pixels are a subset of all pixels, so for every cell:
+#   lost_unprot <= lost          (same path, exact up to float)
+#   lost_unprot <= suit_unprot   (lost pixels are suitable at t; exact)
+#   suit_unprot <= ps_t          (cross-path vs section 2; STRUCT_TOL, as above)
+prot_resid <- do.call(rbind, lapply(names(scenarios), function(sfx) {
+  lu  <- results[[sfx]]$lu_prop
+  fl  <- flow_long[flow_long$rcp == sfx, ]
+  do.call(rbind, lapply(sort(unique(fl$year)), function(y) {
+    d <- fl[fl$year == y, ]
+    d <- d[order(d$cell_id), ]
+    ps_t <- if (y == 2020L) as.numeric(lu_prop_meanclim[, 1])
+            else            as.numeric(lu[, sprintf("rcp%s_%d", sfx, y)])
+    data.frame(
+      rcp        = sfx,
+      year       = y,
+      n_lu_gt_l  = sum(d$prop_lost_unprot > d$prop_lost + STRICT_TOL, na.rm = TRUE),
+      n_lu_gt_su = sum(d$prop_lost_unprot > d$prop_suit_unprot + STRICT_TOL, na.rm = TRUE),
+      n_su_gt_ps = sum(d$prop_suit_unprot > ps_t + STRUCT_TOL, na.rm = TRUE),
+      min_unprot = suppressWarnings(min(c(d$prop_lost_unprot, d$prop_suit_unprot),
+                                        na.rm = TRUE)),
+      lost_all   = sum(d$prop_lost,        na.rm = TRUE),
+      lost_unp   = sum(d$prop_lost_unprot, na.rm = TRUE),
+      suit_all   = sum(ps_t,               na.rm = TRUE),
+      suit_unp   = sum(d$prop_suit_unprot, na.rm = TRUE),
+      stringsAsFactors = FALSE
+    )
+  }))
+}))
+
+# DIAGNOSTIC (not gated; all covered EAUs). If loss share << habitat share,
+# FOREsce largely held protected land static.
+cat(sprintf("\n  PAD-US: %.2f%% of standing habitat is protected; %.2f%% of gross loss falls on it.\n",
+            100 * (1 - sum(prot_resid$suit_unp) / sum(prot_resid$suit_all)),
+            100 * (1 - sum(prot_resid$lost_unp) / sum(prot_resid$lost_all))))
+
 flow_checks <- list(
   "No residual exceeds structural tolerance" =
     all(is.finite(flow_resid$max_resid)) && max(flow_resid$max_resid) < STRUCT_TOL,
@@ -703,7 +814,15 @@ flow_checks <- list(
   "No cell has stocks but no flows" =
     all(flow_resid$n_orphan == 0),
   "Every pair compared the full covered-cell set" =
-    all(flow_resid$n_compared == n_covered)
+    all(flow_resid$n_compared == n_covered),
+  "Unprotected flows are non-negative" =
+    all(is.finite(prot_resid$min_unprot)) && min(prot_resid$min_unprot) >= 0,
+  "Unprotected loss <= total loss" =
+    all(prot_resid$n_lu_gt_l == 0),
+  "Unprotected loss <= unprotected habitat" =
+    all(prot_resid$n_lu_gt_su == 0),
+  "Unprotected habitat <= total habitat (prop_suitable)" =
+    all(prot_resid$n_su_gt_ps == 0)
 )
 
 cat(sprintf("\n  Covered cells: %d | max cells above %.0e in any pair: %d (%.2f%%)\n",
@@ -732,6 +851,8 @@ if (length(flow_failures) > 0) {
        "by prop_cover and by model membership before proceeding.\n",
        "  An unexpected NA count usually means a nodata sentinel collision; see ",
        "the NA DISCIPLINE note in section 5.\n",
+       "  A failed 'Unprotected' check points at the protected mask or its ",
+       "stacking in decompose_flows(); check section 4b's output.\n",
        "Failed checks: ", paste(flow_failures, collapse = ", "))
 } else {
   cat(sprintf("\n  All checks passed. Max residual %.2e across %d pairs;\n",
