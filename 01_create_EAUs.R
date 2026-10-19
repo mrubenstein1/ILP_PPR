@@ -3,7 +3,7 @@
 
 ### ESTABLISH EAUs ####
   # spatial unit of analysis is a simulated parcel of uniform dimension (“equal area unit”, EAU)
-  # EAU = 282km2 (70,000 acres). 
+  # EAU = 342km2 
   # the number of EAUs per WMD varies based on WMD size, but there are on average 50 EAUs per WMD. 
   # There are ~1200 EAUs total across all 24 WMDs
 

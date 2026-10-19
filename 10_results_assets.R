@@ -145,7 +145,31 @@ gaps <- res %>%
 # TABLES  —  tidy CSVs of RAW NUMBERS (formatting + grouped-header styling: results.qmd)
 # ═══════════════════════════════════════════════════════════════════════════════
 
-# Table 1 — value created over the do-nothing baseline (all three models)
+
+# Table 1 — improvement of rolling foresight over greedy and myopic
+# Value added (VA) = J − J_baseline: cumulative discounted duck pairs secured relative
+# to the do-nothing baseline, 2020–2100. J_baseline is common to all policies within a
+# scenario, so rolling − model differences are identical whether taken on VA or on J.
+#   *_va           : each policy's value added (pairs)
+#   rg_/rm_dpairs  : rolling VA − greedy/myopic VA (pairs)
+#   rg_/rm_pct     : % improvement of rolling over greedy/myopic, i.e. dpairs divided
+#                    by the COMPARISON policy's VA (not rolling's). NA if that VA is ~0.
+pct_improve <- function(roll, base) ifelse(abs(base) < 1e-9, NA_real_, 100 * (roll - base) / base)
+pct_short <- function(roll, base) ifelse(abs(roll) < 1e-9, NA_real_, 100 * (roll - base) / roll)
+
+tbl_rolling_improvement <- res %>%
+  select(scenario, model, value_added) %>%
+  pivot_wider(names_from = model, values_from = value_added) %>%
+  arrange(scenario) %>%
+  transmute(scenario,
+            greedy_va  = greedy, myopic_va = myopic, rolling_va = rolling,
+            rg_dpairs  = rolling - greedy, rg_pct = pct_improve(rolling, greedy),
+            rm_dpairs  = rolling - myopic, rm_pct = pct_improve(rolling, myopic),
+            rg_short_pct = pct_short(rolling, greedy),   # % of ROLLING's VA
+            rm_short_pct = pct_short(rolling, myopic))
+write_csv(tbl_rolling_improvement, file.path(OUT_DIR, "table_rolling_improvement.csv"))
+
+# Table 2 — value created over the do-nothing baseline (all three models)
 tbl_over_baseline <- res %>%
   transmute(scenario, model,
             pct    = value_added / J_baseline * 100,   # % improvement over baseline
@@ -158,40 +182,34 @@ tbl_over_baseline <- res %>%
             rolling_pct = pct_rolling,  rolling_dpairs = dpairs_rolling)
 write_csv(tbl_over_baseline, file.path(OUT_DIR, "table_over_baseline.csv"))
 
-# Table 2 — value-added gap vs. rolling foresight (greedy, myopic)
-tbl_gap_vs_rolling <- gaps %>%
-  transmute(scenario, model,
-            gap_pct = gap_value_added_pct, dpairs = dpairs) %>%
-  pivot_wider(names_from = model, values_from = c(gap_pct, dpairs)) %>%
-  arrange(scenario) %>%
-  transmute(scenario,
-            greedy_gap_pct = gap_pct_greedy, greedy_dpairs = dpairs_greedy,
-            myopic_gap_pct = gap_pct_myopic, myopic_dpairs = dpairs_myopic)
-write_csv(tbl_gap_vs_rolling, file.path(OUT_DIR, "table_gap_vs_rolling.csv"))
-
 # ═══════════════════════════════════════════════════════════════════════════════
-# FIGURE (→ Figure 1)  —  cumulative gap vs. rolling over the horizon (climate scenarios)
+# FIGURE (→ Figure 1)  —  cumulative performance relative to rolling (climate scenarios)
+# Rolling is the benchmark and sits at zero by construction; greedy and myopic are
+# plotted as (model − rolling), so they fall below zero as their shortfall accumulates.
 # ═══════════════════════════════════════════════════════════════════════════════
 roll_disc <- trj %>% filter(model == "rolling") %>% select(scenario, year, roll = discounted)
 cumg <- trj %>%
-  filter(model %in% c("greedy", "myopic"), scenario %in% CLIM) %>%
+  filter(model %in% c("greedy", "myopic", "rolling"), scenario %in% CLIM) %>%
   left_join(roll_disc, by = c("scenario", "year")) %>%
   arrange(scenario, model, year) %>%
   group_by(scenario, model) %>%
-  mutate(cum_gap = cumsum(roll - discounted)) %>%
+  mutate(cum_gap = cumsum(discounted - roll)) %>%     # rolling: exactly 0
   ungroup() %>%
-  mutate(model = factor(model, levels = c("greedy", "myopic")),
+  mutate(model = factor(model, levels = c("rolling", "myopic", "greedy")),
          scenario = factor(scenario, levels = CLIM))
-ends <- cumg %>% group_by(scenario, model) %>% filter(year == max(year)) %>% ungroup()
+ends <- cumg %>% filter(model != "rolling") %>%
+  group_by(scenario, model) %>% filter(year == max(year)) %>% ungroup()
 
 fig_overtime <- ggplot(cumg, aes(year, cum_gap, colour = model)) +
   geom_line(linewidth = 0.9) + geom_point(size = 1.6) +
   geom_text(data = ends, aes(label = fmt_pairs(cum_gap)), hjust = -0.12, size = 2.8,
             show.legend = FALSE) +
   facet_wrap(~scenario, ncol = 2, labeller = as_labeller(SCEN_LAB1)) +
-  scale_colour_manual(values = COL_MODEL, labels = c("Greedy", "Myopic")) +
+  scale_colour_manual(values = COL_MODEL, breaks = c("rolling", "myopic", "greedy"),
+                      labels = c("Rolling (benchmark)", "Myopic", "Greedy")) +
   scale_x_continuous("year", expand = expansion(mult = c(0.02, 0.14))) +
-  scale_y_continuous("Cumulative gap vs. rolling\n(discounted duck-pairs)", labels = label_comma()) +
+  scale_y_continuous("Cumulative difference vs. rolling\n(discounted duck-pairs)",
+                     labels = label_comma()) +
   theme(panel.grid.major.x = element_line(colour = "grey92"))
 save_fig(fig_overtime, "overtime_gap", 10.5, 7.4)
 
