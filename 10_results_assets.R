@@ -32,7 +32,10 @@ COL_MODEL <- c(greedy = "#B0413E", myopic = "#E2A23B", rolling = "#2E7D5B")
 
 # maps -------------------------------------------------------------------------
 DRAW_MAPS    <- TRUE                       # set FALSE to skip maps (tables + figs only)
-CELL_M       <- sqrt(282e6)               # EAU side length in metres (tile width/height)
+# EAU tile size in metres = res() of derived_data/wmd_raster_equal_area.tif
+# (18,513.54 x 18,485.21 m, ~342.2 km^2; cells are very slightly non-square)
+CELL_W       <- 18513.54                  # EAU width  (x resolution), metres
+CELL_H       <- 18485.21                  # EAU height (y resolution), metres
 MAP_BG       <- "grey91"                  # unacquired-EAU landscape colour
 WMD_OVERLAY  <- TRUE                       # draw WMD outlines if raster + terra/sf available
 WMD_RASTER   <- "derived_data/wmd_raster_equal_area.tif"
@@ -308,8 +311,8 @@ if (file.exists(PANEL_RDS)) {
   LAB_MED <- "Median across EAUs"
   LAB_IQR <- "Interquartile range (25th\u201375th)"
   LAB_B90 <- "10th\u201390th percentile"
-  # EAU area derives from CELL_M so there is a single source of truth for cell size
-  EAU_AREA_HA <- CELL_M^2 / 1e4
+  # EAU area derives from CELL_W x CELL_H so there is a single source of truth for cell size
+  EAU_AREA_HA <- CELL_W * CELL_H / 1e4
   # captions + legend titles are off by default in theme_map(); the descriptive maps
   # need both, added here rather than in theme_map() so Figures 3–4 are untouched
   DESC_MAP_EXTRA <- theme(
@@ -444,7 +447,7 @@ if (file.exists(PANEL_RDS)) {
     # scale and caption, so benefit and cost stay identical in every other respect.
     eau_map <- function(d) add_geo(
       ggplot(d, aes(x_coord, y_coord, fill = fill_val)) +
-        geom_tile(width = CELL_M, height = CELL_M))
+        geom_tile(width = CELL_W, height = CELL_H))
     MAP_CAP <- paste0("One tile = one EAU (", format(round(EAU_AREA_HA), big.mark = ","),
                       " ha); outlines are Wetland Management Districts.")
 
@@ -535,7 +538,7 @@ if (file.exists(PANEL_RDS)) {
 # ═══════════════════════════════════════════════════════════════════════════════
 # MAPS (→ Figures 3–4)  —  acquisition footprints from 08's persisted schedule
 # Reads acquisition_schedule_spatial.csv (scenario, model, eau_id, wmd_id, x/y,
-# acquired_period/year, prevented_loss). Cells are 282 km^2 EAUs in USGS Conus Albers
+# acquired_period/year, prevented_loss). Cells are ~342 km^2 EAUs in USGS Conus Albers
 # (ESRI:102039); the optional WMD overlay dissolves wmd_raster_equal_area.tif to outlines.
 # ═══════════════════════════════════════════════════════════════════════════════
 if (DRAW_MAPS && file.exists(SCHEDULE)) {
@@ -560,7 +563,7 @@ if (DRAW_MAPS && file.exists(SCHEDULE)) {
     arrange(scenario, cat %in% c("Rolling only (foresight adds)",
                                  "Myopic only (foresight avoids)"))
   mp_fore <- ggplot(md_fore, aes(x_coord, y_coord, fill = cat)) +
-    geom_tile(width = CELL_M, height = CELL_M) +
+    geom_tile(width = CELL_W, height = CELL_H) +
     scale_fill_manual(values = PAIR_COL, name = NULL) +
     facet_wrap(~ scenario, ncol = 2) +
     guides(fill = guide_legend(nrow = 1, override.aes = list(colour = NA)))
@@ -584,9 +587,9 @@ if (DRAW_MAPS && file.exists(SCHEDULE)) {
   dlim <- if (length(nz)) as.numeric(quantile(abs(nz), DIFF_CAP_Q, na.rm = TRUE)) else 1
   if (!is.finite(dlim) || dlim <= 0) dlim <- max(abs(md_dv$dV), 1)
   mp_dv <- ggplot() +
-    geom_tile(data = land, aes(x_coord, y_coord), width = CELL_M, height = CELL_M, fill = MAP_BG) +
+    geom_tile(data = land, aes(x_coord, y_coord), width = CELL_W, height = CELL_H, fill = MAP_BG) +
     geom_tile(data = dplyr::filter(md_dv, dV != 0),
-              aes(x_coord, y_coord, fill = dV), width = CELL_M, height = CELL_M) +
+              aes(x_coord, y_coord, fill = dV), width = CELL_W, height = CELL_H) +
     scale_fill_gradient2(low = DIFF_NEG, mid = "white", high = DIFF_POS, midpoint = 0,
                          limits = c(-dlim, dlim), oob = scales::squish,
                          labels = scales::label_comma(),
