@@ -1,0 +1,693 @@
+---
+title: "Land-Cover Scenario Comparison — `r format(Sys.Date(), '%B %d, %Y')`"
+format:
+  html:
+    toc: true
+    toc-depth: 2
+    fig-cap-location: bottom
+    tbl-cap-location: top
+    embed-resources: true
+    theme: cosmo
+  pdf:
+    fig-pos: 'H'
+    fig-cap-location: bottom
+    tbl-cap-location: top
+    include-in-header:
+      text: |
+        \usepackage{float}
+        \usepackage{caption}
+        \captionsetup{skip=6pt, font=small}
+        \renewcommand{\sfdefault}{\rmdefault}
+        \raggedbottom
+execute:
+  echo: false
+  warning: false
+  message: false
+  freeze: false
+---
+
+```{=html}
+<!-- ════════════════════════════════════════════════════════════════════════════
+ 12_compare_runs.qmd — compares two complete pipeline runs side by side.
+
+ • Reads both runs straight from disk:  runs/<id>/output_data  (model results)
+   and  runs/<id>/derived_data/data_panel.rds  (benefit, risk, cost inputs).
+   Nothing here is written back; 11_results.qmd is untouched.
+ • Choose the two runs in the setup chunk (BASE_RUN, ALT_RUN). Each run's
+   land-cover label is read from its own run_metadata.json (script 10).
+ • Every figure/table mirrors one in 11_results.qmd, with the same formulas as
+   10_results_assets.R, so differences come from the land cover, not the method.
+════════════════════════════════════════════════════════════════════════════ -->
+```
+
+```{r}
+#| label: setup
+#| include: false
+
+library(readr); library(dplyr); library(tidyr); library(ggplot2); library(scales)
+library(flextable); library(knitr)
+set_flextable_defaults(font.family = "Latin Modern Roman")   # match 11_results.qmd
+
+## ── WHICH RUNS TO COMPARE ─────────────────────────────────────────────────────
+BASE_RUN  <- "gcam_ref"     # reference run (the official results)
+ALT_RUN   <- "bau"          # alternative land-cover run
+SHORT_B   <- "GCAM ref"     # short names for table headers and legends
+SHORT_A   <- "BAU"
+THRESH_PP <- 2              # flag a headline gap that moves by more than this (pp)
+## ──────────────────────────────────────────────────────────────────────────────
+
+source("00_config.R")        # for DIR_COMMON (shared EAU grid); run folders are set above
+run_dir <- function(id, sub) file.path("runs", id, sub)
+
+read_meta <- function(id) tryCatch(
+  jsonlite::read_json(file.path(run_dir(id, "output_figs"), "run_metadata.json"),
+                      simplifyVector = TRUE), error = function(e) NULL)
+meta_b <- read_meta(BASE_RUN); meta_a <- read_meta(ALT_RUN)
+lab_of  <- function(m, id) if (!is.null(m$lc_label)) m$lc_label else id
+date_of <- function(m) if (!is.null(m$generated_date)) m$generated_date else "unknown"
+LAB_B <- lab_of(meta_b, BASE_RUN); LAB_A <- lab_of(meta_a, ALT_RUN)
+
+load_run <- function(id) {
+  od <- run_dir(id, "output_data"); pf <- file.path(run_dir(id, "derived_data"), "data_panel.rds")
+  sf <- file.path(od, "acquisition_schedule_spatial.csv")
+  list(res   = read_csv(file.path(od, "model_results.csv"), show_col_types = FALSE),
+       trj   = read_csv(file.path(od, "model_trajectories.csv"), show_col_types = FALSE),
+       sch   = if (file.exists(sf)) read_csv(sf, show_col_types = FALSE) else NULL,
+       panel = if (file.exists(pf)) readRDS(pf) else NULL)
+}
+B <- load_run(BASE_RUN); A <- load_run(ALT_RUN)
+have_panels <- !is.null(B$panel) && !is.null(A$panel)
+have_sched  <- !is.null(B$sch)   && !is.null(A$sch)
+
+lk <- file.path(DIR_COMMON, "eau_wmd_lookup.rds")
+eau_xy <- if (file.exists(lk)) readRDS(lk)[, c("eau_id", "x_coord", "y_coord")] else NULL
+have_xy <- !is.null(eau_xy)
+
+## ── labels, palettes, constants (as in 10_results_assets.R) ───────────────────
+SCEN_LEVELS <- c("rcp45_wet", "rcp45_dry", "rcp85_wet", "rcp85_dry", "stationary")
+SCEN_LAB1   <- c(rcp45_wet = "RCP 4.5 wet", rcp45_dry = "RCP 4.5 dry",
+                 rcp85_wet = "RCP 8.5 wet", rcp85_dry = "RCP 8.5 dry",
+                 stationary = "Stationary")
+CLIM <- SCEN_LEVELS[1:4]
+BEN_MAP_SCEN <- "rcp85_dry"              # scenario shown in the 2100 benefit panel (Fig. 1)
+CELL_W <- 18513.54; CELL_H <- 18485.21  # EAU tile size, metres
+COL_MODEL <- c(greedy = "#B0413E", myopic = "#E2A23B", rolling = "#2E7D5B")
+RUN_COL   <- c(b = "#4D4D4D", a = "#C0392B")
+RUN_LAB   <- c(b = SHORT_B, a = SHORT_A)
+GREEN_HEADER <- "#2E7D5B"
+DIV_LO <- "#B0413E"; DIV_HI <- "#2C7FB8"   # diverging maps: red = lower in ALT, blue = higher
+
+theme_cmp <- function() theme_minimal(base_size = 11, base_family = "serif") +
+  theme(panel.grid.minor = element_blank(), legend.position = "top",
+        strip.text = element_text(face = "bold", hjust = 0))
+theme_map <- function() theme_void(base_size = 11, base_family = "serif") +
+  theme(strip.text = element_text(face = "bold"), legend.position = "bottom",
+        plot.background = element_rect(fill = "white", colour = NA))
+
+## ── formatters ────────────────────────────────────────────────────────────────
+fmt_pairs <- function(x) ifelse(is.na(x), "\u2014", ifelse(abs(x) < 1, "<1",
+                         formatC(round(x), format = "d", big.mark = ",")))
+fmt_spairs <- function(x) ifelse(is.na(x), "\u2014", ifelse(abs(x) < 1, "0",
+                          paste0(ifelse(x > 0, "+", ""), formatC(round(x), format = "d", big.mark = ","))))
+fmt_p1  <- function(x) ifelse(is.na(x), "\u2014", sprintf("%.1f%%", x))
+fmt_p2  <- function(x) ifelse(is.na(x), "\u2014", ifelse(x < 1e-4, "<0.0001%", sprintf("%.2f%%", x)))
+fmt_pp1 <- function(x) ifelse(is.na(x), "\u2014", sprintf("%+.1f", x))
+fmt_pp2 <- function(x) ifelse(is.na(x), "\u2014", sprintf("%+.2f", x))
+fmt_rel <- function(x) ifelse(is.na(x) | !is.finite(x), "\u2014", sprintf("%+.1f%%", x))
+fmt_rk  <- function(x) ifelse(is.na(x), "\u2014", ifelse(x < 0.01, sprintf("%.3f%%", x), sprintf("%.2f%%", x)))
+rng0 <- function(x) sprintf("%.0f\u2013%.0f%%", min(x), max(x))
+rngp <- function(x) paste0(fmt_pairs(min(x)), "\u2013", fmt_pairs(max(x)))
+DELTA <- "\u0394"
+
+## ── table style (same look as 11_results.qmd) ─────────────────────────────────
+## df: first column = row label; groups/subs: top and second header row for the
+## value columns; bold_cells: list of c(row, col) to emphasise (flagged changes).
+style_cmp_table <- function(df, groups, subs, footer_text = NULL, bold_cells = NULL,
+                            first_lab = "Scenario") {
+  vcols <- names(df)[-1]
+  rle_g <- rle(groups)
+  seps  <- c(1, head(1 + cumsum(rle_g$lengths), -1))
+  bd    <- officer::fp_border(color = "#dddddd", width = 1)
+  ft <- flextable(df)
+  ft <- set_header_labels(ft, values = setNames(as.list(c("", subs)), names(df)))
+  ft <- add_header_row(ft, top = TRUE, values = c(first_lab, rle_g$values),
+                       colwidths = c(1, rle_g$lengths))
+  ft <- merge_at(ft, i = 1:2, j = 1, part = "header")
+  ft <- bg(ft, part = "header", bg = GREEN_HEADER)
+  ft <- color(ft, part = "header", color = "white")
+  ft <- bold(ft, part = "header")
+  ft <- align(ft, align = "center", part = "all")
+  ft <- align(ft, j = 1, align = "left", part = "all")
+  ft <- bold(ft, j = 1, part = "body")
+  if (nrow(df) > 1) ft <- bg(ft, i = seq(2, nrow(df), by = 2), bg = "#f5f5f2", part = "body")
+  for (bc in bold_cells) ft <- bold(ft, i = bc[1], j = bc[2], part = "body")
+  for (bc in bold_cells) ft <- color(ft, i = bc[1], j = bc[2], color = "#B0413E", part = "body")
+  ft <- border_remove(ft)
+  ft <- hline(ft, i = 1, part = "header", border = officer::fp_border(color = "white", width = 1))
+  ft <- vline(ft, j = seps, border = bd, part = "all")
+  ft <- padding(ft, padding.top = 3, padding.bottom = 3, part = "all")
+  ft <- fontsize(ft, size = 8.5, part = "all")
+  if (!is.null(footer_text)) {
+    ft <- add_footer_lines(ft, values = footer_text)
+    ft <- fontsize(ft, size = 8, part = "footer")
+    ft <- color(ft, color = "grey40", part = "footer")
+  }
+  wv <- dim_pretty(ft)$widths
+  ft <- width(ft, j = 1, width = wv[1])
+  ft <- width(ft, j = vcols, width = max(wv[-1]))
+  set_table_properties(ft, layout = "autofit", width = 1)
+}
+
+## ══ MODEL RESULTS (same formulas as 10_results_assets.R) ══════════════════════
+pct_improve <- function(roll, base) ifelse(abs(base) < 1e-9, NA_real_, 100 * (roll - base) / base)
+pct_short   <- function(roll, base) ifelse(abs(roll) < 1e-9, NA_real_, 100 * (roll - base) / roll)
+summ <- function(res) {
+  va <- res %>% select(scenario, model, value_added) %>%
+    pivot_wider(names_from = model, values_from = value_added)
+  jb <- res %>% group_by(scenario) %>% summarise(J_baseline = first(J_baseline), .groups = "drop")
+  va %>% left_join(jb, by = "scenario") %>%
+    transmute(scenario, greedy, myopic, rolling, J_baseline,
+              rg_d = rolling - greedy, rm_d = rolling - myopic,
+              rg_imp   = ifelse(abs(rg_d) < 1, NA_real_, pct_improve(rolling, greedy)),
+              rm_imp   = ifelse(abs(rm_d) < 1, NA_real_, pct_improve(rolling, myopic)),
+              rg_short = ifelse(abs(rg_d) < 1, NA_real_, pct_short(rolling, greedy)),
+              rm_short = ifelse(abs(rm_d) < 1, NA_real_, pct_short(rolling, myopic)),
+              greedy_ob  = 100 * greedy  / J_baseline,
+              myopic_ob  = 100 * myopic  / J_baseline,
+              rolling_ob = 100 * rolling / J_baseline,
+              order_ok = rolling >= myopic - 1e-6 & myopic >= greedy - 1e-6)
+}
+cmp <- inner_join(summ(B$res), summ(A$res), by = "scenario", suffix = c("_b", "_a")) %>%
+  mutate(scenario = factor(scenario, levels = SCEN_LEVELS)) %>% arrange(scenario)
+clim <- cmp %>% filter(scenario %in% CLIM)
+scen_lab <- unname(SCEN_LAB1[as.character(cmp$scenario)])
+
+## headline numbers for the summary text
+order_all <- all(clim$order_ok_b) && all(clim$order_ok_a)
+d_rg <- clim$rg_imp_a - clim$rg_imp_b
+d_rm <- clim$rm_imp_a - clim$rm_imp_b
+max_shift <- max(abs(c(d_rg, d_rm)), na.rm = TRUE)
+n_flag    <- sum(abs(c(d_rg, d_rm)) > THRESH_PP, na.rm = TRUE)
+roll_chg  <- 100 * (clim$rolling_a - clim$rolling_b) / clim$rolling_b
+```
+
+**Reference run:** `r LAB_B` (`r BASE_RUN`; results generated `r date_of(meta_b)`)\
+**Alternative run:** `r LAB_A` (`r ALT_RUN`; results generated `r date_of(meta_a)`)
+
+Every figure and table below mirrors one in the main results document. All differences are expressed as **`r SHORT_A` − `r SHORT_B`**. The two runs share the same EAU grid, benefit data (WMD totals), cost data, budget rule and solver settings; only the FOREsce land-cover scenario differs.
+
+# Headline summary
+
+```{r}
+#| label: headline-text
+#| include: false
+txt_order <- if (order_all) {
+  "The policy ranking (rolling first, myopic second, greedy third) **holds in every climate scenario under both land-cover scenarios**."
+} else {
+  "**The policy ranking (rolling first, myopic second, greedy third) does not hold in at least one climate scenario** — see the last column of the table below."
+}
+txt_flag <- if (n_flag == 0) {
+  sprintf("No headline gap moves by more than the %g-percentage-point flag threshold (largest shift: %.1f pp).",
+          THRESH_PP, max_shift)
+} else {
+  sprintf("**%d of 8 headline gaps move by more than %g percentage points** (largest shift: %.1f pp); these are highlighted in red below.",
+          n_flag, THRESH_PP, max_shift)
+}
+```
+
+`r txt_order`
+
+- **Rolling vs. greedy:** `r rng0(clim$rg_imp_b)` improvement under `r SHORT_B`, `r rng0(clim$rg_imp_a)` under `r SHORT_A` (`r rngp(clim$rg_d_b)` vs. `r rngp(clim$rg_d_a)` additional pairs).
+- **Rolling vs. myopic:** `r rng0(clim$rm_imp_b)` improvement under `r SHORT_B`, `r rng0(clim$rm_imp_a)` under `r SHORT_A`.
+- **Shortfall of greedy relative to rolling:** `r rng0(clim$rg_short_b)` under `r SHORT_B`, `r rng0(clim$rg_short_a)` under `r SHORT_A`.
+- **Rolling acquisition value** changes by `r sprintf("%+.1f%% to %+.1f%%", min(roll_chg), max(roll_chg))` across climate scenarios.
+
+`r txt_flag`
+
+```{r}
+#| label: tbl-headline
+#| tbl-cap: "Headline comparison: % improvement of the rolling policy, by land-cover scenario."
+hd <- data.frame(
+  Scenario = unname(SCEN_LAB1[as.character(clim$scenario)]),
+  rg_b = fmt_p1(clim$rg_imp_b), rg_a = fmt_p1(clim$rg_imp_a), rg_d = fmt_pp1(d_rg),
+  rm_b = fmt_p1(clim$rm_imp_b), rm_a = fmt_p1(clim$rm_imp_a), rm_d = fmt_pp1(d_rm),
+  ord  = ifelse(clim$order_ok_b & clim$order_ok_a, "Yes", "NO"),
+  check.names = FALSE, stringsAsFactors = FALSE)
+flags <- c(lapply(which(abs(d_rg) > THRESH_PP), function(i) c(i, 4)),
+           lapply(which(abs(d_rm) > THRESH_PP), function(i) c(i, 7)),
+           lapply(which(hd$ord == "NO"),        function(i) c(i, 8)))
+style_cmp_table(hd,
+  groups = c(rep("Rolling vs. Greedy", 3), rep("Rolling vs. Myopic", 3), "Ranking holds"),
+  subs   = c(SHORT_B, SHORT_A, paste0(DELTA, " pp"), SHORT_B, SHORT_A, paste0(DELTA, " pp"), "both runs"),
+  bold_cells = flags,
+  footer_text = c("% improvement = (rolling \u2212 comparison policy) as % of the comparison policy's acquisition value (as in Table 1 of the main results).",
+                  paste0(DELTA, " pp = ", SHORT_A, " \u2212 ", SHORT_B, ", in percentage points. Red = shift larger than ", THRESH_PP, " pp.")))
+```
+
+# Inputs (descriptive summary)
+
+```{r}
+#| label: inputs-missing
+#| results: asis
+if (!have_panels)
+  cat("*Input comparisons skipped: `data_panel.rds` was not found for one or both runs (runs/<id>/derived_data/).*\n")
+```
+
+```{r}
+#| label: inputs-prep
+#| include: false
+#| eval: !expr have_panels
+scen_of <- function(rcp, gcm) case_when(rcp == "stationary" ~ "stationary",
+                                        rcp == "baseline"   ~ "baseline",
+                                        TRUE                ~ paste0("rcp", rcp, "_", gcm))
+benefit_of <- function(panel) bind_rows(
+  panel %>% filter(year == 2020, rcp == "baseline") %>%
+    transmute(eau_id, year, value = scaled_abundance) %>%
+    tidyr::crossing(scenario = SCEN_LEVELS),
+  panel %>% filter(year > 2020) %>%
+    transmute(eau_id, year, scenario = scen_of(rcp, gcm), value = scaled_abundance)) %>%
+  distinct(eau_id, year, scenario, .keep_all = TRUE)
+
+ben_b <- benefit_of(B$panel); ben_a <- benefit_of(A$panel)
+ben <- full_join(ben_b, ben_a, by = c("eau_id", "year", "scenario"), suffix = c("_b", "_a"))
+
+## landscape totals: WMD totals are fixed by McKenna, so these should barely move
+tot <- ben %>% group_by(scenario, year) %>%
+  summarise(b = sum(value_b, na.rm = TRUE), a = sum(value_a, na.rm = TRUE), .groups = "drop") %>%
+  mutate(rel = 100 * (a - b) / b)
+max_tot_shift <- max(abs(tot$rel), na.rm = TRUE)
+
+## EAU coverage and cost
+n_eau_b <- n_distinct(B$panel$eau_id); n_eau_a <- n_distinct(A$panel$eau_id)
+cost_j <- inner_join(distinct(B$panel, eau_id, year, cost),
+                     distinct(A$panel, eau_id, year, cost),
+                     by = c("eau_id", "year"), suffix = c("_b", "_a"))
+cost_maxdiff <- max(abs(cost_j$cost_a - cost_j$cost_b), na.rm = TRUE)
+
+## risk (as Fig. 3: RCP 4.5/8.5 rows, 2100 excluded; floor = smallest positive stationary value)
+risk_of <- function(panel) {
+  sv  <- panel %>% filter(rcp == "stationary", year < 2100) %>% pull(trans_prob)
+  eps <- if (any(sv > 0, na.rm = TRUE)) min(sv[sv > 0], na.rm = TRUE) else NA_real_
+  r <- panel %>% distinct(eau_id, year, rcp, value = trans_prob) %>%
+    filter(year < 2100, rcp %in% c("45", "85")) %>%
+    mutate(rcp_lab = recode(rcp, `45` = "RCP 4.5", `85` = "RCP 8.5"),
+           at_floor = value <= eps * 1.000001, pct = value * 100)
+  list(r = r, eps = eps)
+}
+RB <- risk_of(B$panel); RA <- risk_of(A$panel)
+rk <- bind_rows(RB$r %>% mutate(run = "b"), RA$r %>% mutate(run = "a")) %>%
+  mutate(run = factor(run, levels = c("b", "a")))
+
+## cumulative conversion probability over the modelled decades (2020 shared row +
+## 2030–2090 RCP rows), the quantity the survival term S accumulates
+cum_of <- function(panel) {
+  h <- panel %>% distinct(eau_id, year, rcp, h = trans_prob) %>% filter(year < 2100)
+  base20 <- h %>% filter(rcp == "baseline")
+  bind_rows(lapply(c("45", "85"), function(k)
+    bind_rows(base20, h %>% filter(rcp == k)) %>%
+      distinct(eau_id, year, .keep_all = TRUE) %>% mutate(rcp_k = k))) %>%
+    group_by(eau_id, rcp_k) %>%
+    summarise(cum = 100 * (1 - prod(1 - h, na.rm = TRUE)), .groups = "drop")
+}
+cum <- inner_join(cum_of(B$panel), cum_of(A$panel), by = c("eau_id", "rcp_k"),
+                  suffix = c("_b", "_a")) %>%
+  mutate(d = cum_a - cum_b, rcp_lab = recode(rcp_k, `45` = "RCP 4.5", `85` = "RCP 8.5"))
+```
+
+## Duck distribution (Figs. 1–2)
+
+```{r}
+#| label: ben-text
+#| include: false
+#| eval: !expr have_panels
+txt_ben <- sprintf(
+  "Land cover only redistributes ducks *within* each WMD (WMD totals come from McKenna et al.), so landscape totals should be nearly unchanged: the largest change in any scenario-year total is %.2f%%%s. EAUs in the panel: %s (%s) vs. %s (%s).",
+  max_tot_shift,
+  if (max_tot_shift > 0.5) " — larger than expected, which suggests a difference in EAU coverage" else "",
+  format(n_eau_b, big.mark = ","), SHORT_B, format(n_eau_a, big.mark = ","), SHORT_A)
+```
+
+`r if (have_panels) txt_ben`
+
+```{r}
+#| label: fig-benefit-diff
+#| fig-cap: !expr paste0("**Change in duck-pair abundance per EAU (", SHORT_A, " \u2212 ", SHORT_B, ").** Left: the 2020 shared baseline; right: 2100 under ", SCEN_LAB1[[BEN_MAP_SCEN]], " (the panels of Fig. 1 in the main results). Blue = more pairs under ", SHORT_A, "; red = fewer.")
+#| fig-width: 10
+#| fig-height: 5
+#| eval: !expr have_panels && have_xy
+dm <- ben %>%
+  filter((year == 2020 & scenario == "rcp45_wet") | (year == 2100 & scenario == BEN_MAP_SCEN)) %>%
+  mutate(panel = factor(ifelse(year == 2020, "2020 (shared baseline)",
+                               paste0("2100 (", SCEN_LAB1[[BEN_MAP_SCEN]], ")")),
+                        levels = c("2020 (shared baseline)",
+                                   paste0("2100 (", SCEN_LAB1[[BEN_MAP_SCEN]], ")"))),
+         d = value_a - value_b) %>%
+  inner_join(eau_xy, by = "eau_id")
+lim <- max(abs(dm$d), na.rm = TRUE); lim <- if (is.finite(lim) && lim > 0) lim else 1
+ggplot(dm, aes(x_coord, y_coord, fill = d)) +
+  geom_tile(width = CELL_W, height = CELL_H) +
+  facet_wrap(~ panel, ncol = 2) + coord_equal() +
+  scale_fill_gradient2(low = DIV_LO, mid = "grey94", high = DIV_HI, midpoint = 0,
+                       limits = c(-lim, lim), labels = label_comma(), na.value = "grey80",
+                       name = paste0(DELTA, " duck pairs per EAU"),
+                       guide = guide_colourbar(title.position = "top", barwidth = 16, barheight = .6)) +
+  theme_map()
+```
+
+```{r}
+#| label: fig-benefit-ribbon
+#| fig-cap: !expr paste0("**Per-EAU duck-pair abundance to 2100, by scenario and land-cover run** (Fig. 2 of the main results). Line = median across EAUs; band = interquartile range. Grey = ", SHORT_B, "; red = ", SHORT_A, ".")
+#| fig-width: 11
+#| fig-height: 4
+#| eval: !expr have_panels
+band <- bind_rows(ben_b %>% mutate(run = "b"), ben_a %>% mutate(run = "a")) %>%
+  group_by(run, scenario, year) %>%
+  summarise(p25 = quantile(value, .25, na.rm = TRUE), med = median(value, na.rm = TRUE),
+            p75 = quantile(value, .75, na.rm = TRUE), .groups = "drop") %>%
+  mutate(run = factor(run, levels = c("b", "a")),
+         scenario = factor(scenario, levels = SCEN_LEVELS))
+ggplot(band, aes(year, med, colour = run, fill = run)) +
+  geom_ribbon(aes(ymin = p25, ymax = p75), alpha = .15, colour = NA) +
+  geom_line(linewidth = .8) +
+  facet_wrap(~ scenario, ncol = 5, labeller = as_labeller(SCEN_LAB1)) +
+  scale_colour_manual(values = RUN_COL, labels = RUN_LAB, name = NULL) +
+  scale_fill_manual(values = RUN_COL, labels = RUN_LAB, name = NULL) +
+  scale_x_continuous("year", breaks = seq(2020, 2100, 40)) +
+  scale_y_continuous("Duck pairs per EAU", labels = label_comma()) +
+  theme_cmp()
+```
+
+```{r}
+#| label: tbl-benefit
+#| tbl-cap: "How much the per-EAU duck distribution changes between land-cover runs."
+#| eval: !expr have_panels
+bs <- ben %>%
+  filter(!is.na(value_b), !is.na(value_a),
+         (year == 2020 & scenario == "rcp45_wet") | year == 2100) %>%
+  mutate(row = ifelse(year == 2020, "2020 (shared baseline)",
+                      paste0("2100 ", SCEN_LAB1[scenario])),
+         ord = ifelse(year == 2020, 0, match(scenario, SCEN_LEVELS))) %>%
+  group_by(row, ord) %>%
+  summarise(r       = cor(value_b, value_a),
+            med_pct = median(abs(value_a - value_b) / pmax(value_b, 1e-9) * 100),
+            n10     = 100 * mean(abs(value_a - value_b) > 0.10 * pmax(value_b, 1e-9)),
+            max_abs = max(abs(value_a - value_b)), .groups = "drop") %>%
+  arrange(ord)
+style_cmp_table(
+  data.frame(Year = bs$row, r = sprintf("%.3f", bs$r), med = fmt_p1(bs$med_pct),
+             n10 = fmt_p1(bs$n10), mx = fmt_pairs(bs$max_abs), check.names = FALSE),
+  groups = rep("Per-EAU duck pairs", 4),
+  subs = c("Correlation", "Median |change|", "EAUs changing >10%", "Largest |change| (pairs)"),
+  first_lab = "Year / scenario",
+  footer_text = "Correlation and changes are across EAUs, comparing the same EAU in both runs.")
+```
+
+## Conversion risk (Fig. 3)
+
+```{r}
+#| label: risk-text
+#| include: false
+#| eval: !expr have_panels
+txt_eps <- sprintf("Background floor (epsilon), which is derived from each run's data: %.3g (%s) vs. %.3g (%s).",
+                   RB$eps, SHORT_B, RA$eps, SHORT_A)
+```
+
+`r if (have_panels) txt_eps`
+
+```{r}
+#| label: fig-risk-box
+#| fig-cap: !expr paste0("**Per-period conversion risk across EAUs, by decade, emissions scenario and land-cover run** (Fig. 3 of the main results). Box = median and IQR; diamond = mean; dash = maximum. Grey = ", SHORT_B, "; red = ", SHORT_A, ".")
+#| fig-width: 11
+#| fig-height: 5
+#| eval: !expr have_panels
+dg <- position_dodge(width = .75)
+ggplot(rk, aes(factor(year), pct, fill = run, colour = run)) +
+  geom_boxplot(aes(group = interaction(year, run)), outlier.shape = NA, position = dg,
+               width = .62, alpha = .35, linewidth = .3) +
+  stat_summary(aes(group = run), fun = max, geom = "point", shape = 95, size = 6,
+               position = dg, show.legend = FALSE) +
+  stat_summary(aes(group = run), fun = mean, geom = "point", shape = 23, size = 1.6,
+               fill = "white", position = dg, show.legend = FALSE) +
+  facet_wrap(~ rcp_lab, ncol = 2) +
+  scale_fill_manual(values = RUN_COL, labels = RUN_LAB, name = NULL) +
+  scale_colour_manual(values = RUN_COL, labels = RUN_LAB, name = NULL) +
+  scale_y_continuous("Per-period conversion risk", labels = label_number(suffix = "%", accuracy = .1),
+                     expand = expansion(mult = c(.02, .06))) +
+  scale_x_discrete("year") +
+  theme_cmp() +
+  theme(panel.grid.major.x = element_blank(),
+        axis.text.x = element_text(angle = 90, vjust = .5, size = rel(.8)))
+```
+
+```{r}
+#| label: tbl-risk
+#| tbl-cap: "Per-period conversion risk across EAUs, by decade and emissions scenario."
+#| eval: !expr have_panels
+rs <- rk %>% group_by(rcp_lab, year, run) %>%
+  summarise(mean = mean(pct), med = median(pct), max = max(pct),
+            floor = 100 * mean(at_floor), .groups = "drop") %>%
+  pivot_wider(names_from = run, values_from = c(mean, med, max, floor)) %>%
+  arrange(rcp_lab, year)
+style_cmp_table(
+  data.frame(Period = paste(rs$rcp_lab, rs$year),
+             mean_b = fmt_rk(rs$mean_b), mean_a = fmt_rk(rs$mean_a),
+             med_b  = fmt_rk(rs$med_b),  med_a  = fmt_rk(rs$med_a),
+             max_b  = fmt_rk(rs$max_b),  max_a  = fmt_rk(rs$max_a),
+             fl_b   = sprintf("%.0f", rs$floor_b), fl_a = sprintf("%.0f", rs$floor_a),
+             check.names = FALSE),
+  groups = c("Mean", "Mean", "Median", "Median", "Maximum", "Maximum",
+             "% of EAUs at floor", "% of EAUs at floor"),
+  subs = rep(c(SHORT_B, SHORT_A), 4),
+  first_lab = "RCP and decade",
+  footer_text = "Risk = probability that an EAU's unprotected suitable habitat is converted during the decade (script 05). The 2020 shared-baseline decade is not part of Fig. 3 and is not shown.")
+```
+
+```{r}
+#| label: fig-cum-risk
+#| fig-cap: !expr paste0("**Change in cumulative conversion probability, 2020\u20132100, per EAU (", SHORT_A, " \u2212 ", SHORT_B, ", percentage points).** Cumulative probability = 1 \u2212 the product of (1 \u2212 per-period risk) over the modelled decades, i.e. the 1 \u2212 S term in the acquisition value. Red = higher risk under ", SHORT_A, "; blue = lower.")
+#| fig-width: 10
+#| fig-height: 5
+#| eval: !expr have_panels && have_xy
+cm <- cum %>% inner_join(eau_xy, by = "eau_id")
+lim <- max(abs(cm$d), na.rm = TRUE); lim <- if (is.finite(lim) && lim > 0) lim else 1
+ggplot(cm, aes(x_coord, y_coord, fill = d)) +
+  geom_tile(width = CELL_W, height = CELL_H) +
+  facet_wrap(~ rcp_lab, ncol = 2) + coord_equal() +
+  scale_fill_gradient2(low = DIV_HI, mid = "grey94", high = DIV_LO, midpoint = 0,
+                       limits = c(-lim, lim), labels = label_number(accuracy = .1, suffix = " pp"),
+                       name = paste0(DELTA, " cumulative conversion probability"),
+                       guide = guide_colourbar(title.position = "top", barwidth = 16, barheight = .6)) +
+  theme_map()
+```
+
+## Cost (Fig. 4)
+
+```{r}
+#| label: cost-text
+#| results: asis
+#| eval: !expr have_panels
+cat(if (cost_maxdiff < 1e-6) {
+  sprintf("Acquisition cost does not depend on land cover, and the two runs' costs are **identical** across all %s EAU-decades they share (largest difference: $%.2g). Fig. 4 is unchanged.\n",
+          format(nrow(cost_j), big.mark = ","), cost_maxdiff)
+} else {
+  sprintf("**Unexpected:** acquisition cost differs between runs (largest difference per EAU-decade: $%s). Cost should not depend on land cover; check that both runs used the same cost inputs.\n",
+          format(round(cost_maxdiff), big.mark = ","))
+})
+```
+
+# Model results
+
+## Acquisition value by policy
+
+```{r}
+#| label: tbl-va
+#| tbl-cap: "Acquisition value (cumulative discounted duck-pairs secured relative to the do-nothing baseline, 2020–2100), by policy and land-cover run."
+rel <- function(a, b) ifelse(abs(b) < 1, NA_real_, 100 * (a - b) / b)
+style_cmp_table(
+  data.frame(Scenario = scen_lab,
+             g_b = fmt_pairs(cmp$greedy_b),  g_a = fmt_pairs(cmp$greedy_a),  g_d = fmt_rel(rel(cmp$greedy_a, cmp$greedy_b)),
+             m_b = fmt_pairs(cmp$myopic_b),  m_a = fmt_pairs(cmp$myopic_a),  m_d = fmt_rel(rel(cmp$myopic_a, cmp$myopic_b)),
+             r_b = fmt_pairs(cmp$rolling_b), r_a = fmt_pairs(cmp$rolling_a), r_d = fmt_rel(rel(cmp$rolling_a, cmp$rolling_b)),
+             check.names = FALSE),
+  groups = rep(c("Greedy", "Myopic", "Rolling"), each = 3),
+  subs = rep(c(SHORT_B, SHORT_A, paste0(DELTA, "%")), 3),
+  footer_text = paste0(DELTA, "% = change in acquisition value, ", SHORT_A, " relative to ", SHORT_B, "."))
+```
+
+## Improvement of rolling over greedy and myopic (Table 1)
+
+```{r}
+#| label: tbl-improve
+#| tbl-cap: "Improvement of the rolling policy over greedy and myopic policies, by scenario and land-cover run (Table 1 of the main results)."
+dg_rg <- cmp$rg_imp_a - cmp$rg_imp_b; dg_rm <- cmp$rm_imp_a - cmp$rm_imp_b
+style_cmp_table(
+  data.frame(Scenario = scen_lab,
+             rgd_b = fmt_pairs(cmp$rg_d_b), rgd_a = fmt_pairs(cmp$rg_d_a),
+             rgp_b = fmt_p1(cmp$rg_imp_b),  rgp_a = fmt_p1(cmp$rg_imp_a), rgp_d = fmt_pp1(dg_rg),
+             rmd_b = fmt_pairs(cmp$rm_d_b), rmd_a = fmt_pairs(cmp$rm_d_a),
+             rmp_b = fmt_p1(cmp$rm_imp_b),  rmp_a = fmt_p1(cmp$rm_imp_a), rmp_d = fmt_pp1(dg_rm),
+             check.names = FALSE),
+  groups = c(rep("Rolling vs. Greedy", 5), rep("Rolling vs. Myopic", 5)),
+  subs = rep(c(paste(DELTA, "pairs", SHORT_B), paste(DELTA, "pairs", SHORT_A),
+               paste("%", SHORT_B), paste("%", SHORT_A), paste0(DELTA, " pp")), 2),
+  bold_cells = c(lapply(which(abs(dg_rg) > THRESH_PP), function(i) c(i, 6)),
+                 lapply(which(abs(dg_rm) > THRESH_PP), function(i) c(i, 11))),
+  footer_text = c(paste0(DELTA, "pairs = pairs secured under rolling \u2212 greedy (or myopic). % = ", DELTA, "pairs as % of greedy (or myopic)."),
+                  paste0(DELTA, " pp = ", SHORT_A, " \u2212 ", SHORT_B, " in percentage points; red = larger than ", THRESH_PP, " pp."),
+                  "\u2014 = difference of <1 pair; % not meaningful at this scale."))
+```
+
+## Shortfall relative to rolling (Table 2)
+
+```{r}
+#| label: tbl-shortfall
+#| tbl-cap: "Shortfall of greedy and myopic policies relative to the rolling policy, by scenario and land-cover run (Table 2 of the main results)."
+ds_rg <- cmp$rg_short_a - cmp$rg_short_b; ds_rm <- cmp$rm_short_a - cmp$rm_short_b
+style_cmp_table(
+  data.frame(Scenario = scen_lab,
+             g_b = fmt_p1(cmp$rg_short_b), g_a = fmt_p1(cmp$rg_short_a), g_d = fmt_pp1(ds_rg),
+             m_b = fmt_p1(cmp$rm_short_b), m_a = fmt_p1(cmp$rm_short_a), m_d = fmt_pp1(ds_rm),
+             check.names = FALSE),
+  groups = c(rep("Greedy vs. Rolling", 3), rep("Myopic vs. Rolling", 3)),
+  subs = rep(c(paste("% shortfall", SHORT_B), paste("% shortfall", SHORT_A), paste0(DELTA, " pp")), 2),
+  bold_cells = c(lapply(which(abs(ds_rg) > THRESH_PP), function(i) c(i, 4)),
+                 lapply(which(abs(ds_rm) > THRESH_PP), function(i) c(i, 7))),
+  footer_text = c("% shortfall = (rolling \u2212 greedy or myopic) as % of rolling.",
+                  paste0(DELTA, " pp = ", SHORT_A, " \u2212 ", SHORT_B, "; red = larger than ", THRESH_PP, " pp.")))
+```
+
+## Value over the do-nothing baseline (Table 3)
+
+```{r}
+#| label: tbl-baseline
+#| tbl-cap: "Value of acquisition policy over the do-nothing baseline, by scenario and land-cover run (Table 3 of the main results)."
+style_cmp_table(
+  data.frame(Scenario = scen_lab,
+             j_b = fmt_pairs(cmp$J_baseline_b), j_a = fmt_pairs(cmp$J_baseline_a),
+             g_b = fmt_p2(cmp$greedy_ob_b),  g_a = fmt_p2(cmp$greedy_ob_a),
+             m_b = fmt_p2(cmp$myopic_ob_b),  m_a = fmt_p2(cmp$myopic_ob_a),
+             r_b = fmt_p2(cmp$rolling_ob_b), r_a = fmt_p2(cmp$rolling_ob_a),
+             r_d = fmt_pp2(cmp$rolling_ob_a - cmp$rolling_ob_b),
+             check.names = FALSE),
+  groups = c(rep("Do-nothing baseline (pairs)", 2), rep("Greedy", 2), rep("Myopic", 2), rep("Rolling", 3)),
+  subs = c(SHORT_B, SHORT_A, SHORT_B, SHORT_A, SHORT_B, SHORT_A, SHORT_B, SHORT_A, paste0(DELTA, " pp")),
+  footer_text = c("Policy columns: acquisition value as % of the do-nothing baseline.",
+                  paste0(DELTA, " pp = ", SHORT_A, " \u2212 ", SHORT_B, " for the rolling policy.")))
+```
+
+## Relative performance over time (Fig. 5)
+
+```{r}
+#| label: fig-overtime
+#| fig-cap: !expr paste0("**Cumulative performance relative to the rolling policy, by land-cover run** (Fig. 5 of the main results). Solid = ", SHORT_B, "; dashed = ", SHORT_A, ". Rolling is the benchmark (0).")
+#| fig-width: 10
+#| fig-height: 7
+cumg_of <- function(trj) {
+  roll <- trj %>% filter(model == "rolling") %>% select(scenario, year, roll = discounted)
+  trj %>% filter(model %in% c("greedy", "myopic"), scenario %in% CLIM) %>%
+    left_join(roll, by = c("scenario", "year")) %>%
+    arrange(scenario, model, year) %>% group_by(scenario, model) %>%
+    mutate(cum_gap = cumsum(discounted - roll)) %>% ungroup()
+}
+cg <- bind_rows(cumg_of(B$trj) %>% mutate(run = "b"), cumg_of(A$trj) %>% mutate(run = "a")) %>%
+  mutate(run = factor(run, levels = c("b", "a")), scenario = factor(scenario, levels = CLIM))
+ggplot(cg, aes(year, cum_gap, colour = model, linetype = run,
+               group = interaction(model, run))) +
+  geom_hline(yintercept = 0, colour = COL_MODEL[["rolling"]], linewidth = .8) +
+  geom_line(linewidth = .8) + geom_point(size = 1.2) +
+  facet_wrap(~ scenario, ncol = 2, labeller = as_labeller(SCEN_LAB1)) +
+  scale_colour_manual(values = COL_MODEL, labels = c(greedy = "Greedy", myopic = "Myopic"), name = NULL) +
+  scale_linetype_manual(values = c(b = "solid", a = "22"), labels = RUN_LAB, name = NULL) +
+  scale_y_continuous("Cumulative difference vs. rolling\n(discounted duck-pairs)", labels = label_comma()) +
+  scale_x_continuous("year") +
+  theme_cmp() + theme(panel.grid.major.x = element_line(colour = "grey92"))
+```
+
+## Acquisition sets (Fig. 6)
+
+```{r}
+#| label: sched-missing
+#| results: asis
+if (!have_sched)
+  cat("*Acquisition-set comparisons skipped: `acquisition_schedule_spatial.csv` was not found for one or both runs.*\n")
+```
+
+```{r}
+#| label: tbl-overlap
+#| tbl-cap: "Overlap of the EAUs each policy acquires under the two land-cover runs."
+#| eval: !expr have_sched
+acq_ids <- function(sch, sc, m)
+  unique(sch$eau_id[sch$scenario == sc & sch$model == m & !is.na(sch$acquired_year)])
+ov <- expand_grid(scenario = CLIM, model = c("greedy", "myopic", "rolling")) %>%
+  rowwise() %>%
+  mutate(n_b = length(acq_ids(B$sch, scenario, model)),
+         n_a = length(acq_ids(A$sch, scenario, model)),
+         shared = length(intersect(acq_ids(B$sch, scenario, model), acq_ids(A$sch, scenario, model))),
+         jac = shared / max(1, length(union(acq_ids(B$sch, scenario, model), acq_ids(A$sch, scenario, model))))) %>%
+  ungroup() %>%
+  pivot_wider(names_from = model, values_from = c(n_b, n_a, shared, jac))
+style_cmp_table(
+  data.frame(Scenario = unname(SCEN_LAB1[ov$scenario]),
+             g_b = ov$n_b_greedy,  g_a = ov$n_a_greedy,  g_s = ov$shared_greedy,  g_j = sprintf("%.2f", ov$jac_greedy),
+             m_b = ov$n_b_myopic,  m_a = ov$n_a_myopic,  m_s = ov$shared_myopic,  m_j = sprintf("%.2f", ov$jac_myopic),
+             r_b = ov$n_b_rolling, r_a = ov$n_a_rolling, r_s = ov$shared_rolling, r_j = sprintf("%.2f", ov$jac_rolling),
+             check.names = FALSE),
+  groups = rep(c("Greedy", "Myopic", "Rolling"), each = 4),
+  subs = rep(c(paste("n", SHORT_B), paste("n", SHORT_A), "shared", "Jaccard"), 3),
+  footer_text = "n = EAUs acquired 2020\u20132100. Jaccard = shared / acquired by either run (1 = identical sets, 0 = no overlap).")
+```
+
+```{r}
+#| label: fig-rolling-sets
+#| fig-cap: !expr paste0("**Rolling-policy acquisitions under the two land-cover runs.** Purple = acquired under both; grey-blue = only under ", SHORT_B, "; red = only under ", SHORT_A, ".")
+#| fig-width: 10
+#| fig-height: 9
+#| eval: !expr have_sched
+land <- B$sch %>% distinct(eau_id, x_coord, y_coord)
+SET_COL <- setNames(c("#5E4FA2", "#6B8EAD", "#C0392B", "grey91"),
+                    c("Both runs", paste(SHORT_B, "only"), paste(SHORT_A, "only"), "Neither"))
+rs_map <- bind_rows(lapply(CLIM, function(sc) {
+  rb <- acq_ids(B$sch, sc, "rolling"); ra <- acq_ids(A$sch, sc, "rolling")
+  land %>% mutate(scenario = sc, cat = case_when(
+    eau_id %in% rb & eau_id %in% ra ~ "Both runs",
+    eau_id %in% rb                  ~ paste(SHORT_B, "only"),
+    eau_id %in% ra                  ~ paste(SHORT_A, "only"),
+    TRUE                            ~ "Neither"))
+})) %>%
+  mutate(cat = factor(cat, levels = names(SET_COL)),
+         scenario = factor(scenario, levels = CLIM))
+ggplot(rs_map, aes(x_coord, y_coord, fill = cat)) +
+  geom_tile(width = CELL_W, height = CELL_H) +
+  facet_wrap(~ scenario, ncol = 2, labeller = as_labeller(SCEN_LAB1)) + coord_equal() +
+  scale_fill_manual(values = SET_COL, name = NULL, drop = FALSE) +
+  guides(fill = guide_legend(nrow = 1)) +
+  theme_map()
+```
+
+```{r}
+#| label: fig-foresight-both
+#| fig-cap: "**Rolling vs. myopic acquisition sets, as drawn for each run** (Fig. 6 of the main results)."
+#| fig-subcap: !expr c(SHORT_B, SHORT_A)
+#| layout-ncol: 2
+#| eval: !expr file.exists(file.path(run_dir(BASE_RUN, "output_figs"), "foresight_difference.png")) && file.exists(file.path(run_dir(ALT_RUN, "output_figs"), "foresight_difference.png"))
+knitr::include_graphics(c(file.path(run_dir(BASE_RUN, "output_figs"), "foresight_difference.png"),
+                          file.path(run_dir(ALT_RUN,  "output_figs"), "foresight_difference.png")))
+```
+
+# Data checks
+
+```{r}
+#| label: checks
+#| results: asis
+cat(sprintf("- Scenarios in both runs' results: %d of %d.\n", nrow(cmp), length(SCEN_LEVELS)))
+if (have_panels) {
+  cat(sprintf("- EAUs in the inputs panel: %s (%s), %s (%s).\n",
+              format(n_eau_b, big.mark = ","), SHORT_B, format(n_eau_a, big.mark = ","), SHORT_A))
+  cat(sprintf("- Background risk floor (epsilon): %.3g (%s), %.3g (%s).\n", RB$eps, SHORT_B, RA$eps, SHORT_A))
+  cat(sprintf("- Largest change in a landscape duck-pair total (scenario-year): %.2f%%.\n", max_tot_shift))
+  cat(sprintf("- Largest cost difference per EAU-decade: $%s.\n", format(signif(cost_maxdiff, 3), big.mark = ",")))
+}
+cat(sprintf("- Stationary scenario, rolling acquisition value: %s (%s) vs. %s (%s). Under the stationary null, risk sits at each run's epsilon floor, so this row moves only with epsilon and the 2020 land cover.\n",
+            fmt_pairs(cmp$rolling_b[cmp$scenario == "stationary"]), SHORT_B,
+            fmt_pairs(cmp$rolling_a[cmp$scenario == "stationary"]), SHORT_A))
+```
