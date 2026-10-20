@@ -12,7 +12,7 @@
 if (!exists(".SETUP_DONE")) source("00_setup.R")
  
 # 1. Load EAU–WMD crosswalk ####
-eau_wmd <- read_csv(file.path(DIR_DERIVED, "eau_wmd_lookup.csv"), show_col_types = FALSE)
+eau_wmd <- read_csv(file.path(DIR_COMMON, "eau_wmd_lookup.csv"), show_col_types = FALSE)
 
  
 # 2. Load suitable habitat tables for both RCPs ####
@@ -340,8 +340,8 @@ saveRDS(eau_flows, file.path(DIR_DERIVED, "eau_flows.rds"))
 
 # 11. Save panel for later steps ####
  
-saveRDS(eau_panel,  "derived_data/eau_panel.rds")
-write_csv(eau_panel, "derived_data/eau_panel.csv")
+saveRDS(eau_panel,  file.path(DIR_DERIVED, "eau_panel.rds"))
+write_csv(eau_panel, file.path(DIR_DERIVED, "eau_panel.csv"))
 
  
 # 12. Logic Check ####

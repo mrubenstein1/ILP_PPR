@@ -48,6 +48,11 @@ if (!file.exists("00_setup.R"))
   stop("00_setup.R not found. Run this from the project root directory.",
        call. = FALSE)
 
+# ── Show which run this is, so a wrong configuration is caught before a long run ─
+source("00_config.R")
+message("Run: ", RUN_ID, " | land cover: ", LC_LABEL, " (", LC_PREFIX, ")",
+        "\nOutputs go to: ", DIR_RUN, "\n")
+
 missing <- scripts[!file.exists(scripts)]
 if (length(missing))
   stop("Missing script(s): ", paste(missing, collapse = ", "), call. = FALSE)

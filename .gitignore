@@ -9,3 +9,5 @@ input_data/
 .RDataTmp
 derived_data/padus_protected_mask_30m.tif
 derived_data/
+runs/common/
+runs/*/derived_data/

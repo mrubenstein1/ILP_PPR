@@ -11,8 +11,8 @@
 if (!exists(".SETUP_DONE")) source("00_setup.R")
 
 # ── CONFIG ─────────────────────────────────────────────────────────────────────
-IN_DIR   <- DIR_OUT      # "output_data"
-OUT_DIR  <- DIR_FIGS     # "output_figs"
+IN_DIR   <- DIR_OUT      # runs/<RUN_ID>/output_data
+OUT_DIR  <- DIR_FIGS     # runs/<RUN_ID>/output_figs
 RESULTS  <- file.path(IN_DIR, "model_results.csv")
 TRAJ     <- file.path(IN_DIR, "model_trajectories.csv")
 SCHEDULE <- file.path(IN_DIR, "acquisition_schedule_spatial.csv")
@@ -38,7 +38,7 @@ CELL_W       <- 18513.54                  # EAU width  (x resolution), metres
 CELL_H       <- 18485.21                  # EAU height (y resolution), metres
 MAP_BG       <- "grey91"                  # unacquired-EAU landscape colour
 WMD_OVERLAY  <- TRUE                       # draw WMD outlines if raster + terra/sf available
-WMD_RASTER   <- "derived_data/wmd_raster_equal_area.tif"
+WMD_RASTER   <- file.path(DIR_COMMON, "wmd_raster_equal_area.tif")
 WMD_LINE_COL <- "grey25"
 WMD_LINE_W   <- 0.25
 PAIR_COL <- c("Acquired by both"               = "#5E4FA2",
@@ -51,8 +51,8 @@ DIFF_NEG   <- "#B0413E"   # red:  myopic banks more (budget landed here, not on 
 DIFF_CAP_Q <- 0.98        # symmetric colour cap at this quantile of |ΔV| (squish beyond)
 
 # descriptive-summary assets (benefit / cost / risk inputs) --------------------
-PANEL_RDS     <- "derived_data/data_panel.rds"      # inputs panel from script 06
-EAU_LOOKUP    <- "derived_data/eau_wmd_lookup.rds"  # eau_id -> x_coord/y_coord
+PANEL_RDS     <- file.path(DIR_DERIVED, "data_panel.rds")      # inputs panel from script 06
+EAU_LOOKUP    <- file.path(DIR_COMMON, "eau_wmd_lookup.rds")  # eau_id -> x_coord/y_coord
 MAP_YEAR      <- 2020        # decision period shown by the cost map
 N_COST_BINS   <- 6           # equal-count classes for the cost map
 COST_RAMP     <- "rocket"    # viridis option, warm -> cost
@@ -610,6 +610,9 @@ jsonlite::write_json(
   list(generated      = format(Sys.time(), "%Y-%m-%dT%H:%M:%S"),
        generated_date = format(Sys.Date(), "%Y-%m-%d"),
        maps_drawn     = drew_maps,
+       run_id         = RUN_ID,
+       lc_scenario    = LC_SCENARIO,
+       lc_label       = LC_LABEL,
        r_version      = R.version.string),
   file.path(OUT_DIR, "run_metadata.json"), auto_unbox = TRUE, pretty = TRUE)
 

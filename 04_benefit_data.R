@@ -8,8 +8,8 @@ if (!exists(".SETUP_DONE")) source("00_setup.R")
 
 #### 1. Import data #####
 # ── 0. Load inputs ────────────────────────────────────────────────────────────
-eau_panel <- readRDS("derived_data/eau_panel.rds")
-benefit <- read.csv("input_data/benefit.csv")
+eau_panel <- readRDS(file.path(DIR_DERIVED, "eau_panel.rds"))
+benefit <- read.csv(file.path(DIR_IN, "benefit.csv"))
 
 # restructure around gcm/rcp/time step structure.
 # Data provided (McKenna et al, 2026) reflects estimates for 3 periods: observation; midcentury; 
@@ -108,7 +108,7 @@ benefit_decadal <- bind_rows(
 # truncated denominator inflates apparent parcel-level density.
 COVERAGE_MAX_MISSING_PCT <- 20
 
-eau_wmd <- read_csv(file.path(DIR_DERIVED, "eau_wmd_lookup.csv"), show_col_types = FALSE)
+eau_wmd <- read_csv(file.path(DIR_COMMON, "eau_wmd_lookup.csv"), show_col_types = FALSE)
 
 coverage <- eau_wmd %>%
   mutate(has_data = eau_id %in% unique(eau_panel$eau_id)) %>%
@@ -416,6 +416,6 @@ if (length(failures) > 0) {
   cat("========================================\n\n")
 }
 
-saveRDS(data_panel, "derived_data/panel_04_benefit.rds")
+saveRDS(data_panel, file.path(DIR_DERIVED, "panel_04_benefit.rds"))
 
 

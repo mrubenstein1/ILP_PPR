@@ -44,15 +44,15 @@
 if (!exists(".SETUP_DONE")) source("00_setup.R")
 
 # ── 0. Load data ──────────────────────────────────────####
-data_panel <- readRDS("derived_data/panel_05_risk.rds")
-eau_wmd    <- read_csv("derived_data/eau_wmd_lookup.csv", show_col_types = FALSE)
+data_panel <- readRDS(file.path(DIR_DERIVED, "panel_05_risk.rds"))
+eau_wmd    <- read_csv(file.path(DIR_COMMON, "eau_wmd_lookup.csv"), show_col_types = FALSE)
 
 
 # ══ PARAMETERS ════════════════════════════════════════════════════════════════####
 inflation_rate <- 0.02    # annual inflation rate for cost projection
 base_year      <- 2017    # dollar denomination year for PLACES FMV: vacant
-places_path    <- "input_data/places_fmv_pnas_dryad/1 estimates/places_fmv_vacant.tif"
-wmd_shp_path   <- "input_data/Wetland_Management_Districts/FSMS_WMD.shp"
+places_path    <- file.path(DIR_IN, "places_fmv_pnas_dryad", "1 estimates", "places_fmv_vacant.tif")
+wmd_shp_path   <- file.path(DIR_IN, "Wetland_Management_Districts", "FSMS_WMD.shp")
 
 # Edge EAU masking (see design note in header):
 #   TRUE  — cost averaged only over PLACES pixels inside WMD boundaries. This is
@@ -84,7 +84,7 @@ if (!file.exists(places_path)) {
 
 cat("Loading spatial inputs...\n")
 
-eau_r   <- rast(file.path(DIR_DERIVED, "wmd_raster_equal_area.tif"))  # EAU zone raster (WMD names)
+eau_r   <- rast(file.path(DIR_COMMON, "wmd_raster_equal_area.tif"))  # EAU zone raster (WMD names)
 fmv_raw <- rast(places_path)                             # PLACES FMV: ln($/ha), 2017 USD
 
 cat("  EAU raster CRS:     ", crs(eau_r,   proj = TRUE), "\n")
@@ -464,8 +464,8 @@ data_panel %>%
 
 # ── 13. Save ──────────────────────────────────────────────────────────────────####
 
-saveRDS(data_panel,  "derived_data/data_panel.rds")
-write_csv(data_panel, "derived_data/data_panel.csv")
+saveRDS(data_panel,  file.path(DIR_DERIVED, "data_panel.rds"))
+write_csv(data_panel, file.path(DIR_DERIVED, "data_panel.csv"))
 
 cat("\n✓ data_panel saved with cost column populated.\n")
 cat(sprintf(

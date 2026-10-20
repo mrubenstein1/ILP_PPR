@@ -46,7 +46,7 @@ data_panel <- readRDS(file.path(DIR_DERIVED, "data_panel.rds"))
 
 # EAU -> (wmd_id, x_coord, y_coord) lookup, used to make the persisted schedule a
 # complete, mappable artifact 
-EAU_LOOKUP <- file.path(DIR_DERIVED, "eau_wmd_lookup.rds")
+EAU_LOOKUP <- file.path(DIR_COMMON, "eau_wmd_lookup.rds")
 
 OUT_DIR <- DIR_OUT
 if (!dir.exists(OUT_DIR)) dir.create(OUT_DIR, recursive = TRUE)

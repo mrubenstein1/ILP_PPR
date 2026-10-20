@@ -75,7 +75,10 @@ library(flextable); library(knitr)
 ## If you ever set a custom `mainfont`, change this string to match it.
 set_flextable_defaults(font.family = "Latin Modern Roman")
 
-OUT_DIR    <- file.path("output_figs")
+## Which run to report: set in 00_config.R (LC_SCENARIO / RUN_ID). The document
+## reads that run's folder, runs/<RUN_ID>/output_figs.
+source("00_config.R")
+OUT_DIR    <- DIR_FIGS
 
 print(getwd()); print(file.exists(file.path(OUT_DIR, "run_metadata.json")))
 
@@ -84,6 +87,8 @@ meta <- tryCatch(
   jsonlite::read_json(file.path(OUT_DIR, "run_metadata.json"), simplifyVector = TRUE),
   error = function(e) NULL)
 gen_date  <- if (!is.null(meta$generated_date)) meta$generated_date else "unknown"
+## land-cover stamp: written by 10_results_assets.R from the run that made the figures
+lc_label  <- if (!is.null(meta$lc_label)) meta$lc_label else "unknown land-cover scenario"
 maps_ok   <- file.exists(file.path(OUT_DIR, "foresight_difference.png"))
 maps_missing <- !maps_ok   # referenced by the fallback note (avoids '!expr !x' YAML clash)
 
@@ -314,7 +319,7 @@ periods** and **5 scenarios** (RCP 4.5/8.5 × wet/dry, plus a stationary null).
  
 
 - **Risk**: FOREsce (derived). Sohl, Terry L., et al. "Spatially explicit land-use and land-cover scenarios for the Great Plains of the United States." Agriculture, Ecosystems & Environment 153 (2012): 1-15.
-  - GCAM reference scenario
+  - `r lc_label`
   - calculated as gross suitable habitat loss per time step. 
   - note this has RCP 4.5 & 8.5 scenarios, but no precip scenario. 
   

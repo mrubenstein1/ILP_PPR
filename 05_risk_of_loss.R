@@ -53,7 +53,7 @@
 if (!exists(".SETUP_DONE")) source("00_setup.R")
 
 # ── 0. Load data  ──────────────────────────────────────####
-data_panel <- readRDS("derived_data/panel_04_benefit.rds")
+data_panel <- readRDS(file.path(DIR_DERIVED, "panel_04_benefit.rds"))
 
 # Gross habitat flows, keyed by eau_id x year x rcp. `year` is the period the
 # transition STARTS from, so these run 2020..2090; 2100 is terminal and has no
@@ -491,7 +491,7 @@ data_panel %>%
 
 # ── 11. Save ──────────────────────────────────────────────────────────────────
 
-saveRDS(data_panel,  "derived_data/panel_05_risk.rds")
-write_csv(data_panel, "derived_data/panel_05_risk.csv")
+saveRDS(data_panel,  file.path(DIR_DERIVED, "panel_05_risk.rds"))
+write_csv(data_panel, file.path(DIR_DERIVED, "panel_05_risk.csv"))
 
 cat(sprintf("\n✓ data_panel saved with trans_prob (epsilon = %.2e).\n", epsilon))

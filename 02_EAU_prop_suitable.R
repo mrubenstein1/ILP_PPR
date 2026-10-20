@@ -3,7 +3,8 @@
 # is a critical first step to establishing both benefit, cost, and transition estimates
 
 
-# Note: this uses the PPR GCAM Reference scenario
+# Note: the FOREsce land-cover scenario (originally the PPR GCAM Reference scenario)
+#   is set by LC_SCENARIO in 00_config.R.
     # https://www.sciencebase.gov/catalog/item/5b683db2e4b006a11f75b06a#Overlay EAUs and Landcover (LC) data ########
 
 # Note that there is a slight misalignment of area extent between the EAUs and the FOREsce landcover data. 
@@ -18,10 +19,10 @@ if (!exists(".SETUP_DONE")) source("00_setup.R")
 
 
 #1. Load EAU Mask
-aoi_mask <- rast(file.path(DIR_DERIVED, "wmd_raster_equal_area.tif"))
+aoi_mask <- rast(file.path(DIR_COMMON, "wmd_raster_equal_area.tif"))
 
 #2. Load LC data
-lu_r <- rast("input_data/prairie_potholes_gcam_ref_rcp45/prairie_potholes_gcam_ref_rcp45_2014.tif")
+lu_r <- rast(file.path(lc_dir("rcp45"), paste0(LC_PREFIX, "_rcp45_2014.tif")))
 
 #3. crop LC data to EAU mask
 lu_r <- crop(lu_r, aoi_mask)
@@ -39,8 +40,8 @@ writeRaster(shared_aoi, file.path(DIR_DERIVED, "foresce_eau_shared_mask.tif"),
 
 #1. Load LC data from both RCP scenarios
 scenarios <- list(
-  `45` = "input_data/prairie_potholes_gcam_ref_rcp45",
-  `85` = "input_data/prairie_potholes_gcam_ref_rcp85"
+  `45` = lc_dir("rcp45"),
+  `85` = lc_dir("rcp85")
 )
 
 #2. Define correct mask
@@ -96,10 +97,10 @@ process_scenario <- function(LU_in, suffix,
                              n_cells, out_dir = DIR_DERIVED,
                              n_cores = 1) {
   
-  # FIXED PATTERN: match prairie_potholes_gcam_ref_rcp{suffix}_YYYY.tif naming convention
+  # FIXED PATTERN: match prairie_potholes_<LC_SCENARIO>_rcp{suffix}_YYYY.tif naming convention
   file_names <- list.files(
     LU_in,
-    pattern = paste0("prairie_potholes_gcam_ref_rcp", suffix, "_[0-9]{4}\\.tif$"),
+    pattern = paste0(LC_PREFIX, "_rcp", suffix, "_[0-9]{4}\\.tif$"),
     full.names = FALSE
   )
   
@@ -200,8 +201,8 @@ cat("\nTotal time for both scenarios:",
 # Reuses process_one_file() with the same reclassification and masking logic.
 
 #1. Define file path
-meanclim_path <- "input_data/prairie_potholes_gcam_ref_meanclim"
-meanclim_fname <- "prairie_potholes_gcam_ref_meanclim_2020.tif"
+meanclim_path <- lc_dir("meanclim")
+meanclim_fname <- paste0(LC_PREFIX, "_meanclim_2020.tif")
 
 #2. Process single file
 cat("\nProcessing meanclim 2020...\n")

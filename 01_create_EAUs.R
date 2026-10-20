@@ -18,7 +18,7 @@ if (!exists(".SETUP_DONE")) source("00_setup.R")
  
 
 #Load WMD shapefile
-wmd <- st_read("input_data/Wetland_Management_Districts/FSMS_WMD.shp")
+wmd <- st_read(file.path(DIR_IN, "Wetland_Management_Districts", "FSMS_WMD.shp"))
 
 #Calculate target cell size
   #if we want an average of 50 EAUs per WMD, how large does each EAU need to be?
@@ -40,7 +40,7 @@ wmd_r <- rast(wmd, resolution = cell_size)
 wmd_split <- rasterize(wmd, wmd_r, field = "WMD", touches = FALSE) #touches=F means that EAUs are only assigned to the WMD if the center point falls within the polygon
 
 #save as geotiff
-wmd_r_path <- file.path(DIR_DERIVED, "wmd_raster_equal_area.tif")
+wmd_r_path <- file.path(DIR_COMMON, "wmd_raster_equal_area.tif")  # shared by all runs
 if (!file.exists(wmd_r_path)) {
   message("Writing EAU raster (slow, one time only)...")
   writeRaster(wmd_split, wmd_r_path, filetype = "GTiff")
@@ -82,9 +82,9 @@ eau_summary <- eau_wmd %>%
   arrange(wmd_id_num)
 
 # ── 5. Save ───────────────────────────────────────────────────────────────────
-saveRDS(eau_wmd,       file.path(DIR_DERIVED, "eau_wmd_lookup.rds"))
-write.csv(eau_wmd,     file.path(DIR_DERIVED, "eau_wmd_lookup.csv"), row.names = FALSE)
-write.csv(eau_summary, file.path(DIR_DERIVED, "wmd_summary.csv"),    row.names = FALSE)
+saveRDS(eau_wmd,       file.path(DIR_COMMON, "eau_wmd_lookup.rds"))
+write.csv(eau_wmd,     file.path(DIR_COMMON, "eau_wmd_lookup.csv"), row.names = FALSE)
+write.csv(eau_summary, file.path(DIR_COMMON, "wmd_summary.csv"),    row.names = FALSE)
 
  
 ##### 6. Logic Check ##########

@@ -34,14 +34,14 @@ if (HAS_SPATIAL) suppressPackageStartupMessages(
 )
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
-DIR_IN      <- "input_data"     # external, read-only — never written by scripts
-DIR_DERIVED <- "derived_data"   # pipeline intermediates (01–06)
-DIR_OUT     <- "output_data"    # model results (08)
-DIR_FIGS    <- "output_figs"    # tables, figures, maps (10)
+# Run settings and folder layout live in 00_config.R (edit there, not here).
+source("00_config.R")
 
-for (d in c(DIR_DERIVED, DIR_OUT, DIR_FIGS))
+for (d in c(DIR_COMMON, DIR_DERIVED, DIR_OUT, DIR_FIGS))
   if (!dir.exists(d)) dir.create(d, recursive = TRUE)
 
 .SETUP_DONE <- TRUE
 message("Setup complete | R ", getRversion(),
-        " | spatial stack: ", if (HAS_SPATIAL) "available" else "NOT available")
+        " | spatial stack: ", if (HAS_SPATIAL) "available" else "NOT available",
+        "\n  Run: ", RUN_ID, " | land cover: ", LC_LABEL, " (", LC_PREFIX, ")",
+        "\n  Writing to: ", DIR_RUN)
