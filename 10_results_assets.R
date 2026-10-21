@@ -611,6 +611,8 @@ jsonlite::write_json(
        generated_date = format(Sys.Date(), "%Y-%m-%d"),
        maps_drawn     = drew_maps,
        run_id         = RUN_ID,
+       derived_run_id = DERIVED_RUN_ID,
+       budget_eaus_per_period = BUDGET_EAUS_PER_PERIOD,
        lc_scenario    = LC_SCENARIO,
        lc_label       = LC_LABEL,
        r_version      = R.version.string),

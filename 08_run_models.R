@@ -36,13 +36,17 @@ if (!exists(".SETUP_DONE")) source("00_setup.R")
 REPRODUCIBLE <- TRUE
 if (REPRODUCIBLE) SOLVER_THREADS <- 1L
 
-cat(sprintf("Run config: spend_down = '%s' | budget = %d median-EAUs/period | delta = %.2f | reproducible = %s\n",
-            SPEND_DOWN_MODE, BUDGET_EAUS_PER_PERIOD, DELTA, REPRODUCIBLE))
+cat(sprintf("Run config: run = %s | derived data = %s | spend_down = '%s' | budget = %g median-EAUs/period | delta = %.2f | reproducible = %s\n",
+            RUN_ID, DIR_DERIVED, SPEND_DOWN_MODE, BUDGET_EAUS_PER_PERIOD, DELTA, REPRODUCIBLE))
 if (identical(SPEND_DOWN_MODE, "off"))
   cat("  (spend_down off — reproduces the pre-spend-down numbers.)\n")
 
 # ── 0. Load the data panel ────────────────────────────────────────────────────####
-data_panel <- readRDS(file.path(DIR_DERIVED, "data_panel.rds"))
+panel_path <- file.path(DIR_DERIVED, "data_panel.rds")
+if (!file.exists(panel_path))
+  stop("data_panel.rds not found at ", panel_path, ". Run scripts 01-06 for ",
+       "DERIVED_RUN_ID = '", DERIVED_RUN_ID, "' first.", call. = FALSE)
+data_panel <- readRDS(panel_path)
 
 # EAU -> (wmd_id, x_coord, y_coord) lookup, used to make the persisted schedule a
 # complete, mappable artifact 
@@ -225,6 +229,8 @@ saveRDS(list(results = results, trajectories = trajectories,
              schedule = schedule,
              convergence = convergence, solve_log = log_df,
              params = list(delta = DELTA,
+                           run_id = RUN_ID,
+                           derived_run_id = DERIVED_RUN_ID,
                            budget_eaus_per_period = BUDGET_EAUS_PER_PERIOD,
                            solver_time_limit = SOLVER_TIME_LIMIT,
                            solver_mip_gap = SOLVER_MIP_GAP,
