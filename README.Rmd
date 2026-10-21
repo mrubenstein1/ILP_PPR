@@ -67,7 +67,7 @@ and `solver_convergence.csv` (a per-run record of how often the per-solve time c
 ## Scripts
 
 **Data pipeline:**
-
+0. **00_config all**: sets landcover scenario and budget parameter. 
 1. **`01_create_EAUs`** — grids the WMD shapefile into EAUs; builds an EAU↔WMD lookup.
 2. **`02_EAU_prop_suitable`** — proportion of suitable habitat per EAU from USGS FOREsce
    land-cover projections, over time and by RCP. (Full resampling run ~6–10 min.)
@@ -108,7 +108,6 @@ and `solver_convergence.csv` (a per-run record of how often the per-solve time c
    **spend-down** block (`SPEND_DOWN_MODE`, the value-first/full-budget-deployment tiebreak)
    live in parameter blocks near the top.
     - Temporal discount rate lives here: defined as 0.95 per decade
-    - Budget parameter lives here: budget sensitivity (strict or generous budget setting) can be changed     at the top
     - Spend down mode lives here: Budget deployment is controlled by `SPEND_DOWN_MODE` 
    (default `"spend"` forces the model to exhaust the budget each time period).
 8. **`08_run_models`** — driver: runs the three models on all scenarios, scores each

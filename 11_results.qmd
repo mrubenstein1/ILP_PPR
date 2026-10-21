@@ -346,7 +346,7 @@ only their survival-discounted value.
 ## Descriptive Summary
 
 ### Duck distribution
-Consistent with other studies (e.g., McKenna et al, 2026), duck abundance is higher in the western portion of the PPR than the eastern portion. This overall distribution pattern continues through 2100 (Fig. 1). In all scenarios, duck abundance is predicted to decline across the PPR by 2100, although wet scenarios fare better than dry scenarios (Fig. 2).
+Consistent with other studies (e.g., McKenna et al, 2026), duck abundance is higher in the western portion of the PPR than the eastern portion. This overall distribution pattern continues through 2100 (Fig. 1). In all scenarios, duck abundance is predicted to decline across the PPR by 2100, although wet scenarios fare better than dry scenarios (Fig. 2). Note that this figure was produced after a spatial join error was corrected. 
 ```{r}
 #| label: fig-benefit-map
 #| fig-cap: !expr caps$fig_benefit_map
@@ -408,7 +408,7 @@ cat("*(Descriptive figures not generated \u2014 the inputs panel was absent when
 
 The major findings of this study compare the difference between total benefit secured across the landscape (2020-2100) under the rolling ILP policy as compared to the greedy or myopic policy. As expected, the rolling policy outperforms both the myopic and the greedy policy; the performance gap between the rolling policy and the greedy policy is larger than the rolling-myopic gap. Rolling provides a 18-20% improvement over myopic, and a ~49-57% improvement over greedy. Under stationarity, there is virtually no difference (as expected, since a stationary environment provides no penalty for policies without foresight). The rolling policy outperforms the myopic and greedy policies under all climate scenarios, consistent with our expectations that an acquisition policy with foresight should outperform a policy with no or limited foresight under any degree of non-stationarity. 
 
-**Highlight: A non-stationary, climate-aware acquisition policy would deliver a ~50% improvement in conservation outcomes as compared to the greedy (i.e., status quo) acquisition policy in use today, protecting an additional 37,000-69,000 duck pairs by 2100**. 
+**My interpretation: A non-stationary, climate-aware acquisition policy could deliver a ~50% improvement in conservation outcomes as compared to the greedy (i.e., status quo) acquisition policy in use today, potentially protecting an additional 37,000-69,000 duck pairs by 2100**. 
 
 
 ```{r}
@@ -429,7 +429,7 @@ style_grouped_table(
 
 Another way of describing this is to ask how short of optimal the greedy and myopic policies fall. Here, the rolling policy is used as the provably near-optimal benchmark (MIP gap 0.01% across all rolling solves), and performance gaps are expressed as a % of rolling. The myopic policy falls ~15-17% short of rolling, and the greedy policy falls ~33-36% short of rolling. 
 
-**Highlight: Current use of acquisition policies that assume environmental stationarity fall short of an optimal acquisition policy by ~30%, failing to secure an additional 37,000-69,000 potential duck pairs by 2100**. 
+**My interpretation: Current use of acquisition policies that assume environmental stationarity fall short of an optimal acquisition policy by ~30%, failing to secure an additional 37,000-69,000 potential duck pairs by 2100**. 
 
 ```{r}
 #| label: tbl-shortfall-vs-rolling
@@ -467,7 +467,7 @@ This table compares the total benefit secured across the landscape (2020-2100) t
 
 Even a greedy acquisition policy outperforms a do-nothing policy; myopic and rolling policies each respectively improve upon that baseline. As expected based on the duck density projections, wet/dry scenario is a larger determinant of improvement than RCP scenario. 
 
-Overall improvement of any acquisition policy, expressed in % over baseline, is relatively small (0.52% at best). This is likely an artifact of how conversion risk is being calculated in this model (a measure of habitat erosion standing in for habitat conversion probability). It may also be related to a relatively conservative budget parameter (only ~60-70 EAUs are acquired in most scenarios) That said, these numbers might not be that different from real world estimates: Kemnick et al 2023 estimated that the program impact for SWAP was "an avoided loss between 0.00% and 0.02% of the carrying capacity for broods and breeding waterfowl from 2008–2017."
+Overall improvement of any acquisition policy, expressed in % over baseline, is relatively small (0.64% at best). This is likely an artifact of how conversion risk is being calculated in this model (a measure of habitat erosion standing in for habitat conversion probability). It may also be related to a relatively conservative budget parameter (only ~60-70 EAUs are acquired in most scenarios). That said, these numbers might not be that different from real world estimates: Kemnick et al 2023 estimated that the program impact for SWAP was "an avoided loss between 0.00% and 0.02% of the carrying capacity for broods and breeding waterfowl from 2008–2017."
 
 ```{=latex}
 \needspace{13\baselineskip}   % keep this whole table on one page (moves to next page if it won't fit)

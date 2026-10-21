@@ -1,0 +1,11 @@
+{
+  "generated": "2026-10-21T13:10:45",
+  "generated_date": "2026-10-21",
+  "maps_drawn": true,
+  "run_id": "gcam_ref_b05",
+  "derived_run_id": "gcam_ref",
+  "budget_eaus_per_period": 5,
+  "lc_scenario": "gcam_ref",
+  "lc_label": "GCAM reference scenario",
+  "r_version": "R version 4.5.2 (2025-10-31)"
+}
