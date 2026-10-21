@@ -1,0 +1,315 @@
+<!-- ════════════════════════════════════════════════════════════════════════════
+ 11c_budget_sensitivity.qmd — child document, included by 11_results.qmd under
+ Updates ONLY IF 10c_results_assets_budget.R has been run (bud_metadata.json
+ exists in the canonical run's output_figs). Do not render this file on its own:
+ it uses objects defined in 11_results.qmd's setup chunk (OUT_DIR, GREEN_HEADER,
+ COL_MODEL, COL_MODEL_TXT, SCEN_LAB1, fmt_pairs, fmt_pct, fmt_pct2, DELTA, DP).
+ Write the prose in the *[Commentary …]* placeholders.
+═════════════════════════════════════════════════════════════════════════════ -->
+
+### 10/21/2026: Budget sensitivity analysis
+
+```{r}
+#| label: bud-setup
+#| include: false
+## Budget-sweep assets are written by 10c_results_assets_budget.R into the canonical
+## run's output_figs (bud_* files), from the runs made by 13_run_budget_sweep.R.
+bmeta <- tryCatch(
+  jsonlite::read_json(file.path(OUT_DIR, "bud_metadata.json"), simplifyVector = TRUE),
+  error = function(e) NULL)
+bud_ok      <- !is.null(bmeta) &&
+               file.exists(file.path(OUT_DIR, "bud_headline.csv")) &&
+               file.exists(file.path(OUT_DIR, "bud_value_added.csv"))
+bud_conv_ok <- bud_ok && file.exists(file.path(OUT_DIR, "bud_convergence.csv"))
+bud_fig_ok  <- function(f) bud_ok && file.exists(file.path(OUT_DIR, f))
+
+BUDS      <- if (bud_ok) bmeta$budgets else numeric(0)
+B_CANON   <- if (bud_ok) bmeta$canonical_budget else 5
+EAU_HA    <- if (bud_ok) bmeta$eau_area_ha else NA_real_
+bud_list  <- function(x) if (length(x) < 2) format(x) else
+  paste0(paste(format(x[-length(x)]), collapse = ", "), " and ", format(x[length(x)]))
+
+## sentence on the canonical-budget rerun (inline in the prose below)
+canon_sentence <- if (bud_ok && !is.null(bmeta$canon_check)) {
+  cc <- bmeta$canon_check
+  if (isTRUE(cc$identical))
+    paste0("The rerun at the canonical budget (", B_CANON, " EAUs per period) reproduced ",
+           "the main results exactly.")
+  else
+    paste0("The rerun at the canonical budget (", B_CANON, " EAUs per period) matched the ",
+           "main results to within ", signif(cc$max_abs_diff_pct, 2),
+           "% of acquisition value.")
+} else ""
+
+## budget label in tables: the canonical budget is marked with *
+bud_cell <- function(b) ifelse(b == B_CANON, paste0(format(b), "*"), format(b))
+FOOT_CANON <- paste0("* = canonical budget (", B_CANON,
+                     " median-priced EAUs per period), as in the main results above.")
+
+## Table style: the house look of style_grouped_table in 11_results.qmd, with any
+## number of leading label columns (here Scenario + Budget). The first label column
+## is merged down each scenario block, and blocks (not rows) are zebra-striped.
+style_bud_table <- function(df, n_lead, lead_labs, groups, subs, footer_text = NULL,
+                            col_colors = NULL, font_size = 8.5) {
+  vcols <- names(df)[-(seq_len(n_lead))]
+  rle_g <- rle(groups)
+  seps  <- c(n_lead, head(n_lead + cumsum(rle_g$lengths), -1))
+  bd    <- officer::fp_border(color = "#dddddd", width = 1)
+  ft <- flextable(df)
+  ft <- set_header_labels(ft, values = setNames(as.list(c(rep("", n_lead), subs)), names(df)))
+  ft <- add_header_row(ft, top = TRUE, values = c(lead_labs, rle_g$values),
+                       colwidths = c(rep(1, n_lead), rle_g$lengths))
+  for (j in seq_len(n_lead)) ft <- merge_at(ft, i = 1:2, j = j, part = "header")
+  ft <- bg(ft, part = "header", bg = GREEN_HEADER)
+  ft <- color(ft, part = "header", color = "white")
+  ft <- bold(ft, part = "header")
+  ft <- align(ft, align = "center", part = "all")
+  ft <- align(ft, j = 1, align = "left", part = "all")
+  ft <- valign(ft, j = seq_len(n_lead), valign = "center", part = "header")
+  ft <- bold(ft, j = 1, part = "body")
+  if (!is.null(col_colors))
+    for (cc in intersect(names(col_colors), vcols))
+      ft <- color(ft, j = cc, color = col_colors[[cc]], part = "body")
+  ## zebra by block of the first label column, and a thin rule between blocks
+  blk  <- cumsum(c(TRUE, df[[1]][-1] != df[[1]][-nrow(df)]))
+  even <- which(blk %% 2 == 0)
+  if (length(even)) ft <- bg(ft, i = even, bg = "#f5f5f2", part = "body")
+  ends <- which(diff(blk) != 0)
+  ft <- border_remove(ft)
+  if (length(ends)) ft <- hline(ft, i = ends, border = bd, part = "body")
+  ft <- merge_v(ft, j = 1)
+  ft <- valign(ft, j = 1, valign = "top", part = "body")
+  ft <- hline(ft, i = 1, part = "header", border = officer::fp_border(color = "white", width = 1))
+  ft <- vline(ft, j = seps, border = bd, part = "header")
+  ft <- vline(ft, j = seps, border = bd, part = "body")
+  ft <- padding(ft, padding.top = 2, padding.bottom = 2, padding.left = 3,
+                padding.right = 3, part = "all")
+  ft <- fontsize(ft, size = font_size, part = "all")
+  ft <- autofit(ft)                      # header + body only: footer not added yet
+  if (!is.null(footer_text)) {
+    ft <- add_footer_lines(ft, values = footer_text)
+    ft <- fontsize(ft, size = 7.5, part = "footer")
+    ft <- color(ft, color = "grey40", part = "footer")
+    ft <- align(ft, align = "left", part = "footer")
+  }
+  set_table_properties(ft, layout = "autofit")
+}
+
+## body text coloured by the policy each column refers to (as in the main tables)
+TXT_G <- COL_MODEL_TXT[["greedy"]]; TXT_M <- COL_MODEL_TXT[["myopic"]]
+TXT_R <- COL_MODEL[["rolling"]]
+
+## data ---------------------------------------------------------------------------
+if (bud_ok) {
+  bh <- read_csv(file.path(OUT_DIR, "bud_headline.csv"), show_col_types = FALSE) %>%
+    mutate(scenario = factor(scenario, levels = names(SCEN_LAB1))) %>%
+    arrange(scenario, budget)
+  bv <- read_csv(file.path(OUT_DIR, "bud_value_added.csv"), show_col_types = FALSE) %>%
+    mutate(scenario = factor(scenario, levels = names(SCEN_LAB1)))
+  bv_w <- bv %>%
+    select(scenario, budget, model, value_added, pct_over_baseline, n_acquired, hectares) %>%
+    pivot_wider(names_from = model,
+                values_from = c(value_added, pct_over_baseline, n_acquired, hectares)) %>%
+    arrange(scenario, budget)
+  ranking_all <- all(bh$ranking_holds[bh$scenario != "stationary"])
+}
+lead_cols <- function(d) data.frame(Scenario = unname(SCEN_LAB1[as.character(d$scenario)]),
+                                    Budget   = bud_cell(d$budget), check.names = FALSE)
+pct_or_dash <- function(dp, p) ifelse(abs(dp) < 1 | is.na(p), "\u2014", fmt_pct(p))
+
+## captions (edit here) -------------------------------------------------------------
+bud_caps <- list(
+  fig_improvement = paste(
+    "**Improvement of the rolling policy over greedy and myopic policies, by budget.**",
+    "% improvement = (rolling \u2212 comparison policy) as % of the comparison policy's",
+    "acquisition value. Budget = median-priced EAUs per period."),
+  tbl_improvement =
+    "**Improvement of the rolling policy over greedy and myopic policies, by budget and scenario.**",
+  tbl_shortfall =
+    "**Shortfall of greedy and myopic policies relative to the rolling policy, by budget and scenario.**",
+  fig_overtime = paste(
+    "**Cumulative performance relative to the rolling policy, by budget.** Discounted",
+    "duck-pairs secured by the greedy and myopic policies minus those secured by rolling,",
+    "cumulative to 2100. Rows = climate scenario; columns = budget (median-priced EAUs",
+    "per period). Rolling is the benchmark (0)."),
+  fig_value = paste(
+    "**Acquisition value by budget and policy.** Cumulative discounted duck-pairs secured",
+    "relative to the do-nothing baseline, 2020\u20132100, by climate scenario."),
+  tbl_over_baseline =
+    "**Value of acquisition policy over do-nothing baseline, by budget and scenario.**",
+  tbl_acquired =
+    "**EAUs acquired by 2100, by policy, budget and scenario.**",
+  fig_foresight = paste(
+    "**Rolling vs. myopic acquisition sets, by budget.** EAUs colored by which policy buys",
+    "them. Rows = climate scenario; columns = budget (median-priced EAUs per period).",
+    "Purple cells are acquired under both policies; blue cells only under the rolling",
+    "policy; orange cells are bought by the myopic policy but avoided by the rolling policy."),
+  tbl_convergence =
+    "**Solver convergence by budget and policy (all scenarios).**"
+)
+```
+
+
+
+*[Commentary: main finding of the budget sensitivity analysis.]*
+
+```{r}
+#| label: fig-bud-improvement
+#| fig-cap: !expr bud_caps$fig_improvement
+#| out-width: 100%
+#| eval: !expr bud_fig_ok("fig_bud_improvement.png")
+knitr::include_graphics(file.path(OUT_DIR, "fig_bud_improvement.png"))
+```
+
+*[Commentary: how the advantage of foresight changes with budget.]*
+
+{{< pagebreak >}}
+
+```{r}
+#| label: tbl-bud-improvement
+#| tbl-cap: !expr bud_caps$tbl_improvement
+#| eval: !expr bud_ok
+df <- cbind(lead_cols(bh),
+            g_va = fmt_pairs(bh$greedy_va), m_va = fmt_pairs(bh$myopic_va),
+            r_va = fmt_pairs(bh$rolling_va),
+            rg_dp = fmt_pairs(bh$rg_dpairs), rg_pct = pct_or_dash(bh$rg_dpairs, bh$rg_pct),
+            rm_dp = fmt_pairs(bh$rm_dpairs), rm_pct = pct_or_dash(bh$rm_dpairs, bh$rm_pct))
+style_bud_table(df, n_lead = 2, lead_labs = c("Scenario", "Budget"),
+  groups = c(rep("Acquisition Value (pairs)", 3), rep("Rolling vs. Greedy", 2),
+             rep("Rolling vs. Myopic", 2)),
+  subs   = c("Greedy", "Myopic", "Rolling", DP, "% improvement", DP, "% improvement"),
+  col_colors = c(g_va = TXT_G, m_va = TXT_M, r_va = TXT_R,
+                 rg_dp = TXT_G, rg_pct = TXT_G, rm_dp = TXT_M, rm_pct = TXT_M),
+  footer_text = c(
+    "Acquisition Value = cumulative discounted duck-pairs secured relative to the do-nothing baseline, 2020\u20132100.",
+    paste0(DP, " = rolling \u2212 greedy (or myopic); % improvement = ", DP, " as % of greedy (or myopic)."),
+    FOOT_CANON,
+    "\u2014 = difference of <1 pair; % not meaningful at this scale."))
+```
+
+{{< pagebreak >}}
+
+```{r}
+#| label: tbl-bud-shortfall
+#| tbl-cap: !expr bud_caps$tbl_shortfall
+#| eval: !expr bud_ok
+df <- cbind(lead_cols(bh),
+            g_va = fmt_pairs(bh$greedy_va), m_va = fmt_pairs(bh$myopic_va),
+            r_va = fmt_pairs(bh$rolling_va),
+            rg_dp = fmt_pairs(bh$rg_dpairs), rg_pct = pct_or_dash(bh$rg_dpairs, bh$rg_short_pct),
+            rm_dp = fmt_pairs(bh$rm_dpairs), rm_pct = pct_or_dash(bh$rm_dpairs, bh$rm_short_pct))
+style_bud_table(df, n_lead = 2, lead_labs = c("Scenario", "Budget"),
+  groups = c(rep("Acquisition Value (pairs)", 3), rep("Greedy vs. Rolling", 2),
+             rep("Myopic vs. Rolling", 2)),
+  subs   = c("Greedy", "Myopic", "Rolling", DP, "% shortfall", DP, "% shortfall"),
+  col_colors = c(g_va = TXT_G, m_va = TXT_M, r_va = TXT_R,
+                 rg_dp = TXT_G, rg_pct = TXT_G, rm_dp = TXT_M, rm_pct = TXT_M),
+  footer_text = c(
+    "Acquisition Value = cumulative discounted duck-pairs secured relative to the do-nothing baseline, 2020\u20132100.",
+    paste0(DP, " = rolling \u2212 greedy (or myopic); % shortfall = ", DP, " as % of rolling."),
+    FOOT_CANON,
+    "\u2014 = difference of <1 pair; % not meaningful at this scale."))
+```
+
+{{< pagebreak >}}
+
+```{r}
+#| label: fig-bud-overtime
+#| fig-cap: !expr bud_caps$fig_overtime
+#| out-width: 100%
+#| eval: !expr bud_fig_ok("fig_bud_overtime.png")
+knitr::include_graphics(file.path(OUT_DIR, "fig_bud_overtime.png"))
+```
+
+*[Commentary: how the gap between policies builds over time at each budget.]*
+
+{{< pagebreak >}}
+
+```{r}
+#| label: fig-bud-value
+#| fig-cap: !expr bud_caps$fig_value
+#| out-width: 100%
+#| eval: !expr bud_fig_ok("fig_bud_value_added.png")
+knitr::include_graphics(file.path(OUT_DIR, "fig_bud_value_added.png"))
+```
+
+*[Commentary: how acquisition value scales with budget.]*
+
+{{< pagebreak >}}
+
+```{r}
+#| label: tbl-bud-over-baseline
+#| tbl-cap: !expr bud_caps$tbl_over_baseline
+#| eval: !expr bud_ok
+df <- cbind(lead_cols(bv_w),
+            g_pct = fmt_pct2(bv_w$pct_over_baseline_greedy),  g_dp = fmt_pairs(bv_w$value_added_greedy),
+            m_pct = fmt_pct2(bv_w$pct_over_baseline_myopic),  m_dp = fmt_pairs(bv_w$value_added_myopic),
+            r_pct = fmt_pct2(bv_w$pct_over_baseline_rolling), r_dp = fmt_pairs(bv_w$value_added_rolling))
+style_bud_table(df, n_lead = 2, lead_labs = c("Scenario", "Budget"),
+  groups = rep(c("Greedy", "Myopic", "Rolling"), each = 2),
+  subs   = rep(c("% over baseline", DP), 3),
+  col_colors = c(g_pct = TXT_G, g_dp = TXT_G, m_pct = TXT_M, m_dp = TXT_M,
+                 r_pct = TXT_R, r_dp = TXT_R),
+  footer_text = c(paste0(DP, " = cumulative discounted duck-pairs secured relative to the do-nothing baseline, 2020\u20132100."),
+                  FOOT_CANON))
+```
+
+```{r}
+#| label: tbl-bud-acquired
+#| tbl-cap: !expr bud_caps$tbl_acquired
+#| eval: !expr bud_ok
+fmt_kha <- function(x) formatC(round(x / 1000), format = "d", big.mark = ",")
+df <- cbind(lead_cols(bv_w),
+            g_n = bv_w$n_acquired_greedy, m_n = bv_w$n_acquired_myopic,
+            r_n = bv_w$n_acquired_rolling,
+            g_ha = fmt_kha(bv_w$hectares_greedy), m_ha = fmt_kha(bv_w$hectares_myopic),
+            r_ha = fmt_kha(bv_w$hectares_rolling))
+style_bud_table(df, n_lead = 2, lead_labs = c("Scenario", "Budget"),
+  groups = c(rep("EAUs acquired", 3), rep("Area acquired (thousand ha)", 3)),
+  subs   = rep(c("Greedy", "Myopic", "Rolling"), 2),
+  col_colors = c(g_n = TXT_G, m_n = TXT_M, r_n = TXT_R,
+                 g_ha = TXT_G, m_ha = TXT_M, r_ha = TXT_R),
+  footer_text = c(paste0("Area = EAUs acquired \u00d7 ", formatC(round(EAU_HA), format = "d", big.mark = ","),
+                         " ha (EAUs are equal-area)."),
+                  FOOT_CANON))
+```
+
+*[Commentary: how many parcels each policy buys as the budget changes.]*
+
+{{< pagebreak >}}
+
+```{r}
+#| label: fig-bud-foresight
+#| fig-cap: !expr bud_caps$fig_foresight
+#| out-width: 100%
+#| eval: !expr bud_fig_ok("map_bud_foresight.png")
+knitr::include_graphics(file.path(OUT_DIR, "map_bud_foresight.png"))
+```
+
+*[Commentary: where foresight changes the choice of parcels at each budget.]*
+
+{{< pagebreak >}}
+
+```{r}
+#| label: tbl-bud-convergence
+#| tbl-cap: !expr bud_caps$tbl_convergence
+#| eval: !expr bud_conv_ok
+cv <- read_csv(file.path(OUT_DIR, "bud_convergence.csv"), show_col_types = FALSE) %>%
+  group_by(budget, model) %>%
+  summarise(n_solves = sum(n_solves), n_cap = sum(n_hit_timelimit),
+            worst = suppressWarnings(max(worst_gap_pct, na.rm = TRUE)), .groups = "drop") %>%
+  arrange(budget, model)
+df <- data.frame(Budget = bud_cell(cv$budget),
+                 Policy = tools::toTitleCase(cv$model),
+                 n      = cv$n_solves,
+                 cap    = cv$n_cap,
+                 gap    = ifelse(is.finite(cv$worst), sprintf("%.3f%%", cv$worst), "\u2014"),
+                 check.names = FALSE)
+style_bud_table(df, n_lead = 2, lead_labs = c("Budget", "Policy"),
+  groups = rep("Solves (all scenarios)", 3),
+  subs   = c("Total", "Hit time cap", "Worst MIP gap"),
+  footer_text = c("Greedy uses no solver. Hit time cap = solves stopped at the time limit before proving optimality.",
+                  FOOT_CANON))
+```
+
+{{< pagebreak >}}

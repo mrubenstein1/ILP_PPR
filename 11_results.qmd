@@ -514,6 +514,12 @@ cat("*(Maps not generated — the spatial schedule was absent when",
 ```
 
 ```{r}
+#| child: !expr if (file.exists(file.path(OUT_DIR, "bud_metadata.json"))) "11c_budget_sensitivity.qmd" else character(0)
+```
+
+{{< pagebreak >}}
+
+```{r}
 #| child: !expr if (file.exists(file.path(OUT_DIR, "cmp_metadata.json"))) "11b_landcover_comparison.qmd" else character(0)
 ```
 
