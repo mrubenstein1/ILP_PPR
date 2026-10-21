@@ -1,0 +1,152 @@
+<!-- ════════════════════════════════════════════════════════════════════════════
+ 11b_landcover_comparison.qmd — child document, included by 11_results.qmd under
+ Updates ONLY IF 10b_results_assets_landcover.R has been run (cmp_metadata.json
+ exists in this run's output_figs). Do not render this file on its own: it uses
+ objects defined in 11_results.qmd's setup chunk (OUT_DIR, GREEN_HEADER,
+ SCEN_LAB1, fmt_pairs, DELTA, DP). Write the prose in the [ ] placeholders.
+═════════════════════════════════════════════════════════════════════════════ -->
+
+### 10/21/2026: Land-cover scenario comparison (GCAM reference vs. BAU)
+
+```{r}
+#| label: cmp-setup
+#| include: false
+## Comparison assets are written by 10b_results_assets_landcover.R from this run
+## (base) and the run named by its COMPARE_RUN. Differences are alternative − base.
+cmeta <- tryCatch(
+  jsonlite::read_json(file.path(OUT_DIR, "cmp_metadata.json"), simplifyVector = TRUE),
+  error = function(e) NULL)
+cmp_ok      <- !is.null(cmeta) && file.exists(file.path(OUT_DIR, "cmp_value_added.csv"))
+cmp_risk_ok <- cmp_ok && file.exists(file.path(OUT_DIR, "cmp_risk_table.csv")) &&
+               file.exists(file.path(OUT_DIR, "fig_cmp_risk_box.png"))
+SB <- if (cmp_ok) cmeta$base_short else "base"
+SA <- if (cmp_ok) cmeta$alt_short  else "alternative"
+TH <- if (cmp_ok) cmeta$thresh_pp  else 2
+
+fmt_p1  <- function(x) ifelse(is.na(x), "\u2014", sprintf("%.1f%%", x))
+fmt_pp1 <- function(x) ifelse(is.na(x), "\u2014", sprintf("%+.1f", x))
+fmt_rk  <- function(x) ifelse(is.na(x), "\u2014", ifelse(x < 0.01, sprintf("%.3f%%", x), sprintf("%.2f%%", x)))
+
+## Table style for the comparison tables: the same look and the same "autofit" layout
+## as style_grouped_table in 11_results.qmd. Columns are sized to their header and
+## body text (autofit runs BEFORE the footer is added, so a long footnote cannot
+## widen a column), and tables with many columns use a smaller font so they fit
+## the page. Footnotes are kept short: in the PDF they do not wrap.
+style_cmp_table <- function(df, groups, subs, footer_text = NULL, bold_cells = NULL,
+                            first_lab = "Scenario", font_size = 8.5) {
+  rle_g <- rle(groups)
+  seps  <- c(1, head(1 + cumsum(rle_g$lengths), -1))
+  bd    <- officer::fp_border(color = "#dddddd", width = 1)
+  ft <- flextable(df)
+  ft <- set_header_labels(ft, values = setNames(as.list(c("", subs)), names(df)))
+  ft <- add_header_row(ft, top = TRUE, values = c(first_lab, rle_g$values),
+                       colwidths = c(1, rle_g$lengths))
+  ft <- merge_at(ft, i = 1:2, j = 1, part = "header")
+  ft <- bg(ft, part = "header", bg = GREEN_HEADER)
+  ft <- color(ft, part = "header", color = "white")
+  ft <- bold(ft, part = "header")
+  ft <- align(ft, align = "center", part = "all")
+  ft <- align(ft, j = 1, align = "left", part = "all")
+  ft <- valign(ft, j = 1, valign = "center", part = "header")
+  ft <- bold(ft, j = 1, part = "body")
+  if (nrow(df) > 1) ft <- bg(ft, i = seq(2, nrow(df), by = 2), bg = "#f5f5f2", part = "body")
+  for (bc in bold_cells) ft <- bold(ft,  i = bc[1], j = bc[2], part = "body")
+  for (bc in bold_cells) ft <- color(ft, i = bc[1], j = bc[2], color = "#B0413E", part = "body")
+  ft <- border_remove(ft)
+  ft <- hline(ft, i = 1, part = "header", border = officer::fp_border(color = "white", width = 1))
+  ft <- vline(ft, j = seps, border = bd, part = "header")
+  ft <- vline(ft, j = seps, border = bd, part = "body")
+  ft <- padding(ft, padding.top = 3, padding.bottom = 3, padding.left = 3,
+                padding.right = 3, part = "all")
+  ft <- fontsize(ft, size = font_size, part = "all")
+  ft <- autofit(ft)                      # header + body only: footer not added yet
+  if (!is.null(footer_text)) {
+    ft <- add_footer_lines(ft, values = footer_text)
+    ft <- fontsize(ft, size = 7.5, part = "footer")
+    ft <- color(ft, color = "grey40", part = "footer")
+    ft <- align(ft, align = "left", part = "footer")
+  }
+  set_table_properties(ft, layout = "autofit")
+}
+
+## captions (edit here) ----------------------------------------------------------
+cap_cmp_headline <- paste0("Improvement of the rolling policy over greedy/myopic, ",
+                           SB, " vs. ", SA, " land cover.")
+cap_cmp_value    <- paste0("Acquisition value (cumulative discounted duck-pairs secured relative to the do-nothing baseline, ",
+                           "2020\u20132100), by policy and land-cover run. Note the absolute improvement of any acquisition policy, relative to do-nothing, in BAU vs GCAM.")
+cap_cmp_risk_fig <- paste0("**Per-period conversion risk across EAUs, by decade, emissions scenario and land-cover scenario. Note that conversion risk collapses mid-century in GCAM, but stays constant in BAU.** Grey = ",
+                           SB, "; red = ", SA, ". Box = median and IQR; diamond = mean; dash = maximum.")
+cap_cmp_risk_tbl <- paste0("**Per-period conversion risk across EAUs, by decade and emissions scenario** (",
+                           SB, " vs. ", SA, ").")
+```
+
+
+In order to explore the role of landcover trends and patterns on model results, I re-ran the model with another FOREsce projection (BAU). Both BAU and GCAM reference are considered to be likely scenarios in a world with no major agricultural or climate policy changes (as per the FORESce description):
+
+- BAU: "Based on an extrapolation of recent land-cover trends as derived from remote-sensing data. Overall trends were provided by 2001 to 2011 change in the National Land Cover Database, while change in crop types were extrapolated from 2008 to 2014 change in the Cropland Data Layer. Overall the scenario is marked by expansion of high-value traditional crops (corn, soybeans, cotton), with a concurrent decline in dryland wheat and some other lower-value crops."
+
+- GCAM: "Based on global-scale scenarios from the GCAM model, the "reference" scenario provides a likely landscape under a world without specific carbon or climate mitigation efforts. As such, it's another form of a "business-as-usual" scenario."
+
+I wanted to compare these to see how changes in landcover estimations might affect model results, and specifically to see if the BAU scenario contained higher conversion rates than the GCAM scenario; it was noticeable in the GCAM scenario that conversion rates declined markedly mid-century, and wanted to explore what effect that would have.
+
+I found that the policy ranking (rolling outperforms myopic which outperforms greedy) holds in both land-cover scenarios under both landcover projections. While the ranking holds, the magnitude of the performance gap varies between the landcover scenarios: the rolling policy still outperforms greedy and myopic in the BAU, but by substantially less than under the GCAM scenario.
+
+{{< pagebreak >}}
+
+```{r}
+#| label: tbl-cmp-headline
+#| tbl-cap: !expr cap_cmp_headline
+#| eval: !expr cmp_ok
+hd <- read_csv(file.path(OUT_DIR, "cmp_headline.csv"), show_col_types = FALSE)
+df <- data.frame(Scenario = unname(SCEN_LAB1[hd$scenario]),
+                 rg_b = fmt_p1(hd$rg_pct_base), rg_a = fmt_p1(hd$rg_pct_alt), rg_d = fmt_pp1(hd$rg_pct_diff),
+                 rm_b = fmt_p1(hd$rm_pct_base), rm_a = fmt_p1(hd$rm_pct_alt), rm_d = fmt_pp1(hd$rm_pct_diff),
+                 ord  = ifelse(hd$ranking_holds, "Yes", "NO"), check.names = FALSE)
+flags <- c(lapply(which(abs(hd$rg_pct_diff) > TH), function(i) c(i, 4)),
+           lapply(which(abs(hd$rm_pct_diff) > TH), function(i) c(i, 7)),
+           lapply(which(df$ord == "NO"),           function(i) c(i, 8)))
+style_cmp_table(df,
+  groups = c(rep("Rolling vs. Greedy", 3), rep("Rolling vs. Myopic", 3), "Ranking holds"),
+  subs   = c(SB, SA, paste0(DELTA, " pp"), SB, SA, paste0(DELTA, " pp"), "both runs"),
+  bold_cells = flags,
+  footer_text = c("% improvement = (rolling \u2212 comparison policy) as % of the comparison policy's value.",
+                  paste0(DELTA, " pp = ", SA, " \u2212 ", SB, ", in percentage points; red = larger than ", TH, " pp.")))
+```
+
+I believe this is driven by different patterns in conversion risk: under GCAM, conversion to cropland is concentrated in the first two decades and then flattens to nearly zero mid-century and never recovers. This has two effects: the overall value of any acquisition policy through 2100 as compared to a do-nothing baseline is relatively low (since conversion risk in most decades is near zero), and the greedy/myopic policy significantly under perform the rolling policy in early decades (since they assumes continued high conversion risk when in fact conversion risk collapses). 
+
+Under BAU, by contrast, the conversion risk is relatively stable across the entire study period. There is decadal variability, but there is no consistent mid-century collapse. This results in a reversal of the two effects: the overall value of any acquisition policy through 2100 as compared to a do-nothing baseline is higher; and greedy/myopic policy assumption of constant conversion risk is in fact pretty close to true. 
+
+
+```{r}
+#| label: fig-cmp-risk
+#| fig-cap: !expr cap_cmp_risk_fig
+#| out-width: 100%
+#| eval: !expr cmp_risk_ok
+knitr::include_graphics(file.path(OUT_DIR, "fig_cmp_risk_box.png"))
+```
+
+{{< pagebreak >}}
+
+
+```{r}
+#| label: tbl-cmp-value
+#| tbl-cap: !expr cap_cmp_value
+#| eval: !expr cmp_ok
+va <- read_csv(file.path(OUT_DIR, "cmp_value_added.csv"), show_col_types = FALSE)
+fmt_rel <- function(x) ifelse(is.na(x) | !is.finite(x), "\u2014", sprintf("%+.1f%%", x))
+df <- data.frame(Scenario = unname(SCEN_LAB1[va$scenario]),
+                 g_b = fmt_pairs(va$greedy_base),  g_a = fmt_pairs(va$greedy_alt),  g_d = fmt_rel(va$greedy_pct_chg),
+                 m_b = fmt_pairs(va$myopic_base),  m_a = fmt_pairs(va$myopic_alt),  m_d = fmt_rel(va$myopic_pct_chg),
+                 r_b = fmt_pairs(va$rolling_base), r_a = fmt_pairs(va$rolling_alt), r_d = fmt_rel(va$rolling_pct_chg),
+                 check.names = FALSE)
+style_cmp_table(df,
+  groups = rep(c("Greedy", "Myopic", "Rolling"), each = 3),
+  subs = rep(c(SB, SA, paste0(DELTA, "%")), 3),
+  font_size = 7.5,
+  footer_text = paste0(DELTA, "% = change in acquisition value, ", SA, " relative to ", SB, "."))
+```
+
+I think this comparison is an interesting way to show how the model can help us understand the value of time-dependent acquisition policies in different systems. My primary take away from this is that the trajectory of conversion risk is more important than actual scale of conversion risk for determining the value/utility of a time-dependent acquisition policy as compared to a traditional (greedy/myopic) policy. I don't know that we need to report BAU results alongside GCAM results, but perhaps include the comparison as a sensitivity analysis in supplementary materials?
+
+

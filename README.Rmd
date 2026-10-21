@@ -130,12 +130,26 @@ and `solver_convergence.csv` (a per-run record of how often the per-solve time c
     `output_figs/`. No solver/`07` needed. The maps need only `ggplot2`; `terra`/`sf` are
     used solely for the optional WMD outline overlay (auto-skipped if absent). Toggle maps with `DRAW_MAPS`.
 
-11. **`11_results.qmd`** reports results from `10_results_assets`, with annotation/prose accompanying each figure/graph/map. Allows for regular and flexible updating of results as the project evolves. 
+10b. **`10b_results_assets_landcover`** — optional reporting script that compares two
+    complete pipeline runs: the base run set in `00_config.R` (normally `gcam_ref`) and
+    an alternative land-cover run (`COMPARE_RUN`, normally `bau`). Reads both runs'
+    `output_data/` results and `derived_data/data_panel.rds`, and writes comparison
+    tables (`cmp_headline.csv`, `cmp_value_added.csv`, `cmp_risk_table.csv`), a
+    conversion-risk figure (`fig_cmp_risk_box`) and `cmp_metadata.json` into the base
+    run's `output_figs/`. Run it only after both pipelines have finished, with
+    `00_config.R` set to the base run. No solver/`07` needed.
 
+11. **`11_results.qmd`** reports results from `10_results_assets`, with annotation/prose accompanying each figure/graph/map.
+
+
+11b. **`11b_landcover_comparison.qmd`** — child document holding the land-cover
+    comparison entry (prose, tables, figure) for the Updates section of `11_results.qmd`.
+    It is included automatically only if `10b_results_assets_landcover` has been run
+    (i.e., `cmp_metadata.json` exists); otherwise the entry is skipped. Not rendered
+    on its own: it relies on objects defined in `11_results.qmd`'s setup chunk.
 
 ## References and sources
 
-Land-cover projections: USGS FOREsce (GCAM Reference). Acquisition cost: Nolte 2020,
+Land-cover projections: USGS FOREsce (GCAM Reference / BAU). Acquisition cost: Nolte 2020,
 *PNAS* 117(47):29577 (PLACES FMV raster; Dryad doi:10.5061/dryad.np5hqbzq9). EAU gridding
-adapted from a script by Heini Kujala. Prior toy-problem precedent: Rubenstein et al.,
-*Conservation Biology* (in review).
+adapted from a script by Heini Kujala. Prior toy-problem precedent: Rubenstein, Madeleine A., et al. "Cognitive and institutional barriers to effective natural resource management under global change." Conservation Biology (2026): e70393.

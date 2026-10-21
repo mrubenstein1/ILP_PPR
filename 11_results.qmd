@@ -513,6 +513,12 @@ cat("*(Maps not generated — the spatial schedule was absent when",
      them. They still use the house table style and auto-number after the others. -->
 ```
 
+```{r}
+#| child: !expr if (file.exists(file.path(OUT_DIR, "cmp_metadata.json"))) "11b_landcover_comparison.qmd" else character(0)
+```
+
+{{< pagebreak >}}
+
 ### 9/30/2026: Protected Area Removal
 
 In examining the conversion risk, we realized that the previous conversion risk included protected area in the total pool of potentially available habitat, which artificially diluted the estimated conversion risk. To address this, I overlayed the USGS Protected Area Database (PADUS) and calculated the gross suitable habitat loss with protected areas removed. This revised gross suitable habitat rate was used in the risk of loss calculation (i.e., script 05); however, the other uses of landcover data (such as distributing waterfowl density within a WMD) continue to use the unmasked raster with protected areas included. 
@@ -525,7 +531,7 @@ Updating the conversion risk to exclude protected areas increases the comparativ
 ### 9/15/2026: Conversion Risk Update: Net vs Gross Habitat loss:
 Delving in to the calculations of how I quantified conversion risk, I realized that I was using net rather than gross habitat loss. This was not conceptually consistent with what I presented, which I intended to be the proportion of suitable habitat in time t that was lost by time t+1 (a flow). Instead, I had calculated the difference between the stock of suitable habitat in time t - t+1, which reflects both losses and gains in suitable habitat.  
 
-I changed the calculations to see going from net to gross would affect the estimate of conversion risk. I found that there is a fair amount of habitat recovery in the FOREsce models, so some of those habitat gains showed in the net calculation were concealing real habitat losses. The table below compares the net vs gross habitat loss rate (gross > net in all decades but particularly mid-century). In addition, the use of the gross metric in the first model run meant that some EAUs had a "positive" habitat loss (i.e., overall habitat gain), which I corrected for by imposing a data-derived epsilon (floor). With the net metric, that is no longer needed (net loss >= 0). The table also shows the percent of EAUs that were "censored" by the artificial floor (i.e., which really had habitat loss but which was hidden by habitat gain). 
+I changed the calculations to see going from net to gross would affect the estimate of conversion risk. I found that there is a fair amount of habitat recovery in the FOREsce models, so some of those habitat gains showed in the net calculation were concealing real habitat losses. The table below compares the net vs gross habitat loss rate (gross > net in all decades but particularly mid-century). In addition, the use of the net metric in the first model run meant that some EAUs had a "positive" habitat loss (i.e., overall habitat gain), which I corrected for by imposing a data-derived epsilon (floor). With the gross metric, that is no longer needed (net loss >= 0). The table also shows the percent of EAUs that were "censored" by the artificial floor (i.e., which really had habitat loss but which was hidden by habitat gain). 
 
 | Decade | gross | net | % of EAUs censored |
 |---|---|---|---|---|

@@ -95,6 +95,7 @@ COL_MODEL <- c(greedy = "#B0413E", myopic = "#E2A23B", rolling = "#2E7D5B")
 RUN_COL   <- c(b = "#4D4D4D", a = "#C0392B")
 RUN_LAB   <- c(b = SHORT_B, a = SHORT_A)
 GREEN_HEADER <- "#2E7D5B"
+MAX_TBL_W    <- 6.2       # text width of the PDF page, inches (tables are scaled to fit)
 DIV_LO <- "#B0413E"; DIV_HI <- "#2C7FB8"   # diverging maps: red = lower in ALT, blue = higher
 
 theme_cmp <- function() theme_minimal(base_size = 11, base_family = "serif") +
@@ -147,15 +148,28 @@ style_cmp_table <- function(df, groups, subs, footer_text = NULL, bold_cells = N
   ft <- vline(ft, j = seps, border = bd, part = "all")
   ft <- padding(ft, padding.top = 3, padding.bottom = 3, part = "all")
   ft <- fontsize(ft, size = 8.5, part = "all")
+  ## Column widths come from the header and body only. They are measured BEFORE
+  ## the footer is added: a long footer line would otherwise be counted as a
+  ## column's content and push the table off the page. If the natural widths
+  ## exceed the text width, the font steps down once and the columns are scaled
+  ## to fit; with a fixed layout, header text then wraps instead of overflowing.
+  wv <- dim_pretty(ft, part = "all")$widths
+  if (sum(wv) > MAX_TBL_W) {
+    if (sum(wv) > 1.2 * MAX_TBL_W) {
+      ft <- fontsize(ft, size = 7.5, part = "all")
+      wv <- dim_pretty(ft, part = "all")$widths
+    }
+    wv <- wv * min(1, MAX_TBL_W / sum(wv))
+  }
+  ft <- width(ft, width = wv)
+  ft <- set_table_properties(ft, layout = "fixed")
   if (!is.null(footer_text)) {
     ft <- add_footer_lines(ft, values = footer_text)
-    ft <- fontsize(ft, size = 8, part = "footer")
+    ft <- fontsize(ft, size = 7.5, part = "footer")
     ft <- color(ft, color = "grey40", part = "footer")
+    ft <- align(ft, align = "left", part = "footer")
   }
-  wv <- dim_pretty(ft)$widths
-  ft <- width(ft, j = 1, width = wv[1])
-  ft <- width(ft, j = vcols, width = max(wv[-1]))
-  set_table_properties(ft, layout = "autofit", width = 1)
+  ft
 }
 
 ## ══ MODEL RESULTS (same formulas as 10_results_assets.R) ══════════════════════
@@ -189,6 +203,21 @@ d_rm <- clim$rm_imp_a - clim$rm_imp_b
 max_shift <- max(abs(c(d_rg, d_rm)), na.rm = TRUE)
 n_flag    <- sum(abs(c(d_rg, d_rm)) > THRESH_PP, na.rm = TRUE)
 roll_chg  <- 100 * (clim$rolling_a - clim$rolling_b) / clim$rolling_b
+```
+
+```{r}
+#| label: captions
+#| include: false
+## Dynamic figure captions live here (not in chunk options) because chunk options are
+## parsed as YAML, where a colon followed by a space inside an unquoted value breaks.
+cap_fig_benefit_diff <- paste0("**Change in duck-pair abundance per EAU (", SHORT_A, " \u2212 ", SHORT_B, ").** Left: the 2020 shared baseline; right: 2100 under ", SCEN_LAB1[[BEN_MAP_SCEN]], " (the panels of Fig. 1 in the main results). Blue = more pairs under ", SHORT_A, "; red = fewer.")
+cap_fig_benefit_ribbon <- paste0("**Per-EAU duck-pair abundance to 2100, by scenario and land-cover run** (Fig. 2 of the main results). Line = median across EAUs; band = interquartile range. Grey = ", SHORT_B, "; red = ", SHORT_A, ".")
+cap_fig_risk_box <- paste0("**Per-period conversion risk across EAUs, by decade, emissions scenario and land-cover run** (Fig. 3 of the main results). Box = median and IQR; diamond = mean; dash = maximum. Grey = ", SHORT_B, "; red = ", SHORT_A, ".")
+cap_fig_cum_risk <- paste0("**Change in cumulative conversion probability, 2020\u20132100, per EAU (", SHORT_A, " \u2212 ", SHORT_B, ", percentage points).** Cumulative probability = 1 \u2212 the product of (1 \u2212 per-period risk) over the modelled decades, i.e. the 1 \u2212 S term in the acquisition value. Red = higher risk under ", SHORT_A, "; blue = lower.")
+cap_fig_overtime <- paste0("**Cumulative performance relative to the rolling policy, by land-cover run** (Fig. 5 of the main results). Solid = ", SHORT_B, "; dashed = ", SHORT_A, ". Rolling is the benchmark (0).")
+cap_fig_rolling_sets <- paste0("**Rolling-policy acquisitions under the two land-cover runs.** Purple = acquired under both; grey-blue = only under ", SHORT_B, "; red = only under ", SHORT_A, ".")
+cap_fig_foresight_base <- paste0("**Rolling vs. myopic acquisition sets, ", SHORT_B, "** (Fig. 6 of the main results, as drawn for this run). Purple = both policies; blue = rolling only; orange = myopic only.")
+cap_fig_foresight_alt  <- paste0("**Rolling vs. myopic acquisition sets, ", SHORT_A, "** (Fig. 6 of the main results, as drawn for this run). Purple = both policies; blue = rolling only; orange = myopic only.")
 ```
 
 **Reference run:** `r LAB_B` (`r BASE_RUN`; results generated `r date_of(meta_b)`)\
@@ -331,7 +360,7 @@ txt_ben <- sprintf(
 
 ```{r}
 #| label: fig-benefit-diff
-#| fig-cap: !expr paste0("**Change in duck-pair abundance per EAU (", SHORT_A, " \u2212 ", SHORT_B, ").** Left: the 2020 shared baseline; right: 2100 under ", SCEN_LAB1[[BEN_MAP_SCEN]], " (the panels of Fig. 1 in the main results). Blue = more pairs under ", SHORT_A, "; red = fewer.")
+#| fig-cap: !expr cap_fig_benefit_diff
 #| fig-width: 10
 #| fig-height: 5
 #| eval: !expr have_panels && have_xy
@@ -349,14 +378,14 @@ ggplot(dm, aes(x_coord, y_coord, fill = d)) +
   facet_wrap(~ panel, ncol = 2) + coord_equal() +
   scale_fill_gradient2(low = DIV_LO, mid = "grey94", high = DIV_HI, midpoint = 0,
                        limits = c(-lim, lim), labels = label_comma(), na.value = "grey80",
-                       name = paste0(DELTA, " duck pairs per EAU"),
+                       name = paste0("Change in duck pairs per EAU (", SHORT_A, " minus ", SHORT_B, ")"),
                        guide = guide_colourbar(title.position = "top", barwidth = 16, barheight = .6)) +
   theme_map()
 ```
 
 ```{r}
 #| label: fig-benefit-ribbon
-#| fig-cap: !expr paste0("**Per-EAU duck-pair abundance to 2100, by scenario and land-cover run** (Fig. 2 of the main results). Line = median across EAUs; band = interquartile range. Grey = ", SHORT_B, "; red = ", SHORT_A, ".")
+#| fig-cap: !expr cap_fig_benefit_ribbon
 #| fig-width: 11
 #| fig-height: 4
 #| eval: !expr have_panels
@@ -416,7 +445,7 @@ txt_eps <- sprintf("Background floor (epsilon), which is derived from each run's
 
 ```{r}
 #| label: fig-risk-box
-#| fig-cap: !expr paste0("**Per-period conversion risk across EAUs, by decade, emissions scenario and land-cover run** (Fig. 3 of the main results). Box = median and IQR; diamond = mean; dash = maximum. Grey = ", SHORT_B, "; red = ", SHORT_A, ".")
+#| fig-cap: !expr cap_fig_risk_box
 #| fig-width: 11
 #| fig-height: 5
 #| eval: !expr have_panels
@@ -464,7 +493,7 @@ style_cmp_table(
 
 ```{r}
 #| label: fig-cum-risk
-#| fig-cap: !expr paste0("**Change in cumulative conversion probability, 2020\u20132100, per EAU (", SHORT_A, " \u2212 ", SHORT_B, ", percentage points).** Cumulative probability = 1 \u2212 the product of (1 \u2212 per-period risk) over the modelled decades, i.e. the 1 \u2212 S term in the acquisition value. Red = higher risk under ", SHORT_A, "; blue = lower.")
+#| fig-cap: !expr cap_fig_cum_risk
 #| fig-width: 10
 #| fig-height: 5
 #| eval: !expr have_panels && have_xy
@@ -475,7 +504,7 @@ ggplot(cm, aes(x_coord, y_coord, fill = d)) +
   facet_wrap(~ rcp_lab, ncol = 2) + coord_equal() +
   scale_fill_gradient2(low = DIV_HI, mid = "grey94", high = DIV_LO, midpoint = 0,
                        limits = c(-lim, lim), labels = label_number(accuracy = .1, suffix = " pp"),
-                       name = paste0(DELTA, " cumulative conversion probability"),
+                       name = paste0("Change in cumulative conversion probability (", SHORT_A, " minus ", SHORT_B, ")"),
                        guide = guide_colourbar(title.position = "top", barwidth = 16, barheight = .6)) +
   theme_map()
 ```
@@ -579,7 +608,7 @@ style_cmp_table(
 
 ```{r}
 #| label: fig-overtime
-#| fig-cap: !expr paste0("**Cumulative performance relative to the rolling policy, by land-cover run** (Fig. 5 of the main results). Solid = ", SHORT_B, "; dashed = ", SHORT_A, ". Rolling is the benchmark (0).")
+#| fig-cap: !expr cap_fig_overtime
 #| fig-width: 10
 #| fig-height: 7
 cumg_of <- function(trj) {
@@ -639,7 +668,7 @@ style_cmp_table(
 
 ```{r}
 #| label: fig-rolling-sets
-#| fig-cap: !expr paste0("**Rolling-policy acquisitions under the two land-cover runs.** Purple = acquired under both; grey-blue = only under ", SHORT_B, "; red = only under ", SHORT_A, ".")
+#| fig-cap: !expr cap_fig_rolling_sets
 #| fig-width: 10
 #| fig-height: 9
 #| eval: !expr have_sched
@@ -665,13 +694,17 @@ ggplot(rs_map, aes(x_coord, y_coord, fill = cat)) +
 ```
 
 ```{r}
-#| label: fig-foresight-both
-#| fig-cap: "**Rolling vs. myopic acquisition sets, as drawn for each run** (Fig. 6 of the main results)."
-#| fig-subcap: !expr c(SHORT_B, SHORT_A)
-#| layout-ncol: 2
-#| eval: !expr file.exists(file.path(run_dir(BASE_RUN, "output_figs"), "foresight_difference.png")) && file.exists(file.path(run_dir(ALT_RUN, "output_figs"), "foresight_difference.png"))
-knitr::include_graphics(c(file.path(run_dir(BASE_RUN, "output_figs"), "foresight_difference.png"),
-                          file.path(run_dir(ALT_RUN,  "output_figs"), "foresight_difference.png")))
+#| label: fig-foresight-base
+#| fig-cap: !expr cap_fig_foresight_base
+#| eval: !expr file.exists(file.path(run_dir(BASE_RUN, "output_figs"), "foresight_difference.png"))
+knitr::include_graphics(file.path(run_dir(BASE_RUN, "output_figs"), "foresight_difference.png"))
+```
+
+```{r}
+#| label: fig-foresight-alt
+#| fig-cap: !expr cap_fig_foresight_alt
+#| eval: !expr file.exists(file.path(run_dir(ALT_RUN, "output_figs"), "foresight_difference.png"))
+knitr::include_graphics(file.path(run_dir(ALT_RUN, "output_figs"), "foresight_difference.png"))
 ```
 
 # Data checks

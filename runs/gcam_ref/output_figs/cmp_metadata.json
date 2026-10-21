@@ -1,0 +1,14 @@
+{
+  "generated_date": "2026-10-21",
+  "base_run": "gcam_ref",
+  "base_label": "GCAM reference scenario",
+  "base_short": "GCAM ref",
+  "alt_run": "bau",
+  "alt_label": "BAU scenario",
+  "alt_short": "BAU",
+  "alt_generated_date": "2026-10-20",
+  "thresh_pp": 2,
+  "eps_base": 5.3367e-07,
+  "eps_alt": 3.9083e-07,
+  "risk_drawn": true
+}
