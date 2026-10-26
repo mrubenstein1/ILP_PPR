@@ -41,8 +41,8 @@ canon_sentence <- if (bud_ok && !is.null(bmeta$canon_check)) {
            "% of acquisition value.")
 } else ""
 
-## budget label in tables: the canonical budget is marked with *
-bud_cell <- function(b) ifelse(b == B_CANON, paste0(format(b), "*"), format(b))
+## budget label in tables
+bud_cell <- function(b) format(b)
 FOOT_CANON <- paste0("* = canonical budget (", B_CANON,
                      " median-priced EAUs per period), as in the main results above.")
 
@@ -150,20 +150,12 @@ bud_caps <- list(
 ```
 
 
+We wanted to explore the role of budget in determining the relatively performance of the three acquisition policies, as well as the overall performance over the do-nothing baseline. I re-ran the model with a stricter budget constraint (2 median-priced EAUs acquired per period) and a more generous budget constraint (10 median-priced EAUs per period) under all climate scenarios, using the GCAM reference landcover scenario. 
 
-*[Commentary: main finding of the budget sensitivity analysis.]*
+I found that across climate scenarios, a stricter budget constraint increased the performance gap between acquisition policies. When only 2 median-priced EAUs can be purchased per decision period, the rolling policy outperforms greedy/myopic policy by ~ 75%/25%; when 10 median-priced EAUs can be purchased per decision period, the rolling policy outperforms the greedy/myopic policy by only ~ 35%/~15%.
 
-```{r}
-#| label: fig-bud-improvement
-#| fig-cap: !expr bud_caps$fig_improvement
-#| out-width: 100%
-#| eval: !expr bud_fig_ok("fig_bud_improvement.png")
-knitr::include_graphics(file.path(OUT_DIR, "fig_bud_improvement.png"))
-```
+**The value of foresight increases under a stricter budget, and declines under a more generous budget**. 
 
-*[Commentary: how the advantage of foresight changes with budget.]*
-
-{{< pagebreak >}}
 
 ```{r}
 #| label: tbl-bud-improvement
@@ -182,10 +174,22 @@ style_bud_table(df, n_lead = 2, lead_labs = c("Scenario", "Budget"),
                  rg_dp = TXT_G, rg_pct = TXT_G, rm_dp = TXT_M, rm_pct = TXT_M),
   footer_text = c(
     "Acquisition Value = cumulative discounted duck-pairs secured relative to the do-nothing baseline, 2020\u20132100.",
-    paste0(DP, " = rolling \u2212 greedy (or myopic); % improvement = ", DP, " as % of greedy (or myopic)."),
-    FOOT_CANON,
-    "\u2014 = difference of <1 pair; % not meaningful at this scale."))
+    paste0(DP, " = pairs secured through acquisition under rolling \u2212 greedy (or myopic)."),
+    "% improvement = \u0394pairs as % of greedy (or myopic).",
+    if (any(abs(c(bh$rg_dpairs, bh$rm_dpairs)) < 1))
+      "\u2014 = difference of <1 pair; % improvement not meaningful at this scale."))
 ```
+
+{{< pagebreak >}}
+
+```{r}
+#| label: fig-bud-improvement
+#| fig-cap: !expr bud_caps$fig_improvement
+#| out-width: 100%
+#| eval: !expr bud_fig_ok("fig_bud_improvement.png")
+knitr::include_graphics(file.path(OUT_DIR, "fig_bud_improvement.png"))
+```
+
 
 {{< pagebreak >}}
 
@@ -206,9 +210,10 @@ style_bud_table(df, n_lead = 2, lead_labs = c("Scenario", "Budget"),
                  rg_dp = TXT_G, rg_pct = TXT_G, rm_dp = TXT_M, rm_pct = TXT_M),
   footer_text = c(
     "Acquisition Value = cumulative discounted duck-pairs secured relative to the do-nothing baseline, 2020\u20132100.",
-    paste0(DP, " = rolling \u2212 greedy (or myopic); % shortfall = ", DP, " as % of rolling."),
-    FOOT_CANON,
-    "\u2014 = difference of <1 pair; % not meaningful at this scale."))
+    paste0(DP, " = secured through acquisition under rolling \u2212 greedy (or myopic)."),
+    "% shortfall = \u0394pairs, as % of rolling.",
+    if (any(abs(c(bh$rg_dpairs, bh$rm_dpairs)) < 1))
+      "\u2014 = difference of <1 pair; % shortfall not meaningful at this scale."))
 ```
 
 {{< pagebreak >}}
@@ -221,21 +226,9 @@ style_bud_table(df, n_lead = 2, lead_labs = c("Scenario", "Budget"),
 knitr::include_graphics(file.path(OUT_DIR, "fig_bud_overtime.png"))
 ```
 
-*[Commentary: how the gap between policies builds over time at each budget.]*
-
 {{< pagebreak >}}
 
-```{r}
-#| label: fig-bud-value
-#| fig-cap: !expr bud_caps$fig_value
-#| out-width: 100%
-#| eval: !expr bud_fig_ok("fig_bud_value_added.png")
-knitr::include_graphics(file.path(OUT_DIR, "fig_bud_value_added.png"))
-```
-
-*[Commentary: how acquisition value scales with budget.]*
-
-{{< pagebreak >}}
+As expected, I found the a more generous budget constraint resulted in a higher conservation value over the do-nothing baseline. Note that even a doubling of the budget from the original constraint of nEAU=5 to nEAU=10 only resulted in a ~.6% or .7% improvement over the do-nothing baseline- but note that actual pairs conserved increases dramatically (in some cases more than tripling).  
 
 ```{r}
 #| label: tbl-bud-over-baseline
@@ -250,31 +243,8 @@ style_bud_table(df, n_lead = 2, lead_labs = c("Scenario", "Budget"),
   subs   = rep(c("% over baseline", DP), 3),
   col_colors = c(g_pct = TXT_G, g_dp = TXT_G, m_pct = TXT_M, m_dp = TXT_M,
                  r_pct = TXT_R, r_dp = TXT_R),
-  footer_text = c(paste0(DP, " = cumulative discounted duck-pairs secured relative to the do-nothing baseline, 2020\u20132100."),
-                  FOOT_CANON))
+  footer_text = paste0(DP, " = cumulative discounted duck-pairs secured relative to the do-nothing baseline, 2020\u20132100."))
 ```
-
-```{r}
-#| label: tbl-bud-acquired
-#| tbl-cap: !expr bud_caps$tbl_acquired
-#| eval: !expr bud_ok
-fmt_kha <- function(x) formatC(round(x / 1000), format = "d", big.mark = ",")
-df <- cbind(lead_cols(bv_w),
-            g_n = bv_w$n_acquired_greedy, m_n = bv_w$n_acquired_myopic,
-            r_n = bv_w$n_acquired_rolling,
-            g_ha = fmt_kha(bv_w$hectares_greedy), m_ha = fmt_kha(bv_w$hectares_myopic),
-            r_ha = fmt_kha(bv_w$hectares_rolling))
-style_bud_table(df, n_lead = 2, lead_labs = c("Scenario", "Budget"),
-  groups = c(rep("EAUs acquired", 3), rep("Area acquired (thousand ha)", 3)),
-  subs   = rep(c("Greedy", "Myopic", "Rolling"), 2),
-  col_colors = c(g_n = TXT_G, m_n = TXT_M, r_n = TXT_R,
-                 g_ha = TXT_G, m_ha = TXT_M, r_ha = TXT_R),
-  footer_text = c(paste0("Area = EAUs acquired \u00d7 ", formatC(round(EAU_HA), format = "d", big.mark = ","),
-                         " ha (EAUs are equal-area)."),
-                  FOOT_CANON))
-```
-
-*[Commentary: how many parcels each policy buys as the budget changes.]*
 
 {{< pagebreak >}}
 
@@ -286,30 +256,6 @@ style_bud_table(df, n_lead = 2, lead_labs = c("Scenario", "Budget"),
 knitr::include_graphics(file.path(OUT_DIR, "map_bud_foresight.png"))
 ```
 
-*[Commentary: where foresight changes the choice of parcels at each budget.]*
-
-{{< pagebreak >}}
-
-```{r}
-#| label: tbl-bud-convergence
-#| tbl-cap: !expr bud_caps$tbl_convergence
-#| eval: !expr bud_conv_ok
-cv <- read_csv(file.path(OUT_DIR, "bud_convergence.csv"), show_col_types = FALSE) %>%
-  group_by(budget, model) %>%
-  summarise(n_solves = sum(n_solves), n_cap = sum(n_hit_timelimit),
-            worst = suppressWarnings(max(worst_gap_pct, na.rm = TRUE)), .groups = "drop") %>%
-  arrange(budget, model)
-df <- data.frame(Budget = bud_cell(cv$budget),
-                 Policy = tools::toTitleCase(cv$model),
-                 n      = cv$n_solves,
-                 cap    = cv$n_cap,
-                 gap    = ifelse(is.finite(cv$worst), sprintf("%.3f%%", cv$worst), "\u2014"),
-                 check.names = FALSE)
-style_bud_table(df, n_lead = 2, lead_labs = c("Budget", "Policy"),
-  groups = rep("Solves (all scenarios)", 3),
-  subs   = c("Total", "Hit time cap", "Worst MIP gap"),
-  footer_text = c("Greedy uses no solver. Hit time cap = solves stopped at the time limit before proving optimality.",
-                  FOOT_CANON))
-```
+In a stricter budget regime, acquisitions are concentrated in the eastern PPR, where the most dense duck abundances are concentrated. In the more generous budget regimes, more parcels are acquired and more parcels in the western PPR are acquired, particularly under the rolling policy. 
 
 {{< pagebreak >}}

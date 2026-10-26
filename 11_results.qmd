@@ -419,7 +419,7 @@ style_grouped_table(
   col_colors = cols1, shade_cols = shade1,
   footer_text = c(
     "Acquisition Value = cumulative discounted duck-pairs secured relative to the do-nothing baseline, 2020\u20132100.",
-    paste0(DP, " = pairs secured through acqusition under rolling \u2212 greedy (or myopic)."),
+    paste0(DP, " = pairs secured through acquisition under rolling \u2212 greedy (or myopic)."),
         "% improvement = \u0394pairs as % of greedy (or myopic).",
     if (any(abs(c(t1$rg_dpairs, t1$rm_dpairs)) < 1))
       "\u2014 = difference of <1 pair; % improvement not meaningful at this scale."))
@@ -439,8 +439,8 @@ style_grouped_table(
   col_colors = cols1, shade_cols = shade1,
   footer_text = c(
     "Acquisition Value = cumulative discounted duck-pairs secured relative to the do-nothing baseline, 2020\u20132100.",
-    paste0(DP, " = secured through acqusition under rolling \u2212 greedy (or myopic)."),
-    "% shortfall = \u0394pairs, as % of rolling .",
+    paste0(DP, " = secured through acquisition under rolling \u2212 greedy (or myopic)."),
+    "% shortfall = \u0394pairs, as % of rolling.",
     if (any(abs(c(t1$rg_dpairs, t1$rm_dpairs)) < 1))
       "\u2014 = difference of <1 pair; % shortfall not meaningful at this scale."))
 ```
@@ -516,8 +516,6 @@ cat("*(Maps not generated — the spatial schedule was absent when",
 ```{r}
 #| child: !expr if (file.exists(file.path(OUT_DIR, "bud_metadata.json"))) "11c_budget_sensitivity.qmd" else character(0)
 ```
-
-{{< pagebreak >}}
 
 ```{r}
 #| child: !expr if (file.exists(file.path(OUT_DIR, "cmp_metadata.json"))) "11b_landcover_comparison.qmd" else character(0)
