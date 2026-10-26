@@ -51,7 +51,18 @@ if (!file.exists("00_setup.R"))
 # ── Show which run this is, so a wrong configuration is caught before a long run ─
 source("00_config.R")
 message("Run: ", RUN_ID, " | land cover: ", LC_LABEL, " (", LC_PREFIX, ")",
+        " | budget: ", BUDGET_EAUS_PER_PERIOD, " median EAUs/period",
+        "\nDerived data from: ", DIR_DERIVED,
         "\nOutputs go to: ", DIR_RUN, "\n")
+
+# A budget run reuses another run's derived data; it must not rerun 01-06.
+upstream_scripts <- c("01_create_EAUs.R", "02_EAU_prop_suitable.R",
+                      "03_create_data_panel.R", "04_benefit_data.R",
+                      "05_risk_of_loss.R", "06_cost_data.R")
+if (RUN_ID != DERIVED_RUN_ID && any(scripts %in% upstream_scripts))
+  stop("Budget run '", RUN_ID, "' reuses derived data from '", DERIVED_RUN_ID,
+       "'. Run only from 08 onward, e.g.  PPR_BUDGET=",
+       BUDGET_EAUS_PER_PERIOD, " Rscript 00_run_all.R 08", call. = FALSE)
 
 missing <- scripts[!file.exists(scripts)]
 if (length(missing))

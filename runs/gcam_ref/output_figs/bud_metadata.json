@@ -1,0 +1,17 @@
+{
+  "generated_date": "2026-10-21",
+  "base_run_id": "gcam_ref",
+  "lc_label": "GCAM reference scenario",
+  "canonical_budget": 5,
+  "budgets": [2, 5, 10],
+  "run_ids": ["gcam_ref_b02", "gcam_ref_b05", "gcam_ref_b10"],
+  "eau_area_ha": 34222.66747434,
+  "maps_drawn": true,
+  "canon_check": {
+    "run_id": "gcam_ref_b05",
+    "canonical_run_id": "gcam_ref",
+    "max_abs_diff_pct": 0,
+    "identical": true
+  },
+  "r_version": "R version 4.5.2 (2025-10-31)"
+}

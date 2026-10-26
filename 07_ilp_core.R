@@ -62,7 +62,8 @@ DELTA <- 0.95
 # BUDGET_EAUS_PER_PERIOD * median(cost at that period). This scales automatically
 # with inflation (cost already carries 2%/yr) and is dimensionless. Default 5;
 # sensitivity range 2-10.
-BUDGET_EAUS_PER_PERIOD <- 5
+# Set in 00_config.R (canonical 5; overridden by PPR_BUDGET for the sweep).
+if (!exists("BUDGET_EAUS_PER_PERIOD")) source("00_config.R")
 
 
 # ── Budget deployment (spend-down) ────────────────────────────────────────────
