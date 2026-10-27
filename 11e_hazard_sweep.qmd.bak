@@ -1,0 +1,147 @@
+<!-- ════════════════════════════════════════════════════════════════════════════
+ 11e_hazard_sweep.qmd — child document, included by 11_results.qmd under Updates
+ ONLY IF 10e_results_assets_hazard_sweep.R has been run (haz_sweep_metadata.json
+ exists in the canonical run's output_figs). Do not render this file on its own:
+ it uses objects defined in 11_results.qmd's setup chunk (OUT_DIR, GREEN_HEADER).
+ Write the prose in the *[Commentary …]* placeholders.
+═════════════════════════════════════════════════════════════════════════════ -->
+
+### 10/26/2026: Conversion-hazard sweep
+
+```{r}
+#| label: hsw-setup
+#| include: false
+## Assets are written by 10e_results_assets_hazard_sweep.R from the canonical run
+## (k = 1) and every complete high-hazard run made by 15_run_hazard_sweep.R.
+swmeta <- tryCatch(
+  jsonlite::read_json(file.path(OUT_DIR, "haz_sweep_metadata.json"), simplifyVector = TRUE),
+  error = function(e) NULL)
+sw_ok     <- !is.null(swmeta) && file.exists(file.path(OUT_DIR, "haz_sweep.csv"))
+sw_fig_ok <- function(f) sw_ok && file.exists(file.path(OUT_DIR, f))
+sw_stale  <- sw_ok && isTRUE(swmeta$any_stale)
+
+sw <- if (sw_ok) read_csv(file.path(OUT_DIR, "haz_sweep.csv"), show_col_types = FALSE) else NULL
+CLIM_SW <- c("rcp45_wet", "rcp45_dry", "rcp85_wet", "rcp85_dry")
+
+## numbers used inline in the prose
+sw_n      <- if (sw_ok) nrow(swmeta$runs) else 0
+sw_canon  <- if (sw_ok) sprintf("%.2f%%", swmeta$canonical_annual_pct) else "?"
+sw_max    <- if (sw_ok) sprintf("%.2f%%", max(swmeta$runs$annual_rate_pct)) else "?"
+sw_kmax   <- if (sw_ok) sprintf("%.1f", max(swmeta$runs$k)) else "?"
+
+## "min–max" across the four climate scenarios
+fmt_rng <- function(lo, hi) ifelse(is.na(lo), "\u2014",
+  ifelse(abs(hi - lo) < 0.05, sprintf("%.1f%%", lo), sprintf("%.1f\u2013%.1f%%", lo, hi)))
+
+## Same table look as the comparison tables in 11b/11d.
+style_sweep_table <- function(df, groups, subs, footer_text = NULL,
+                              first_lab = "Annual rate", font_size = 8.5) {
+  rle_g <- rle(groups)
+  seps  <- c(1, head(1 + cumsum(rle_g$lengths), -1))
+  bd    <- officer::fp_border(color = "#dddddd", width = 1)
+  ft <- flextable(df)
+  ft <- set_header_labels(ft, values = setNames(as.list(c("", subs)), names(df)))
+  ft <- add_header_row(ft, top = TRUE, values = c(first_lab, rle_g$values),
+                       colwidths = c(1, rle_g$lengths))
+  ft <- merge_at(ft, i = 1:2, j = 1, part = "header")
+  ft <- bg(ft, part = "header", bg = GREEN_HEADER)
+  ft <- color(ft, part = "header", color = "white")
+  ft <- bold(ft, part = "header")
+  ft <- align(ft, align = "center", part = "all")
+  ft <- align(ft, j = 1:2, align = "left", part = "all")
+  ft <- valign(ft, j = 1, valign = "center", part = "header")
+  ft <- bold(ft, j = 1, part = "body")
+  if (nrow(df) > 1) ft <- bg(ft, i = seq(2, nrow(df), by = 2), bg = "#f5f5f2", part = "body")
+  ft <- border_remove(ft)
+  ft <- hline(ft, i = 1, part = "header", border = officer::fp_border(color = "white", width = 1))
+  ft <- vline(ft, j = seps, border = bd, part = "header")
+  ft <- vline(ft, j = seps, border = bd, part = "body")
+  ft <- padding(ft, padding.top = 3, padding.bottom = 3, padding.left = 3,
+                padding.right = 3, part = "all")
+  ft <- fontsize(ft, size = font_size, part = "all")
+  ft <- autofit(ft)                      # header + body only: footer not added yet
+  if (!is.null(footer_text)) {
+    ft <- add_footer_lines(ft, values = footer_text)
+    ft <- fontsize(ft, size = 7.5, part = "footer")
+    ft <- color(ft, color = "grey40", part = "footer")
+    ft <- align(ft, align = "left", part = "footer")
+  }
+  set_table_properties(ft, layout = "autofit")
+}
+
+## captions (edit here) ----------------------------------------------------------
+cap_sw_table <- paste0("Improvement of the rolling policy over greedy/myopic, and of myopic over ",
+                       "greedy, across conversion rates. Range across the four climate scenarios.")
+cap_sw_pct   <- paste0("**Policy performance across conversion rates (% improvement).** ",
+                       "Left: myopic vs. greedy (value of using conversion risk); middle: rolling ",
+                       "vs. myopic (value of foresight); right: rolling vs. greedy (total). ",
+                       "Each tick gives the annual rate and the estimate it stands for.")
+cap_sw_pairs <- paste0("**Policy performance across conversion rates (", "\u0394",
+                       "pairs).** Same comparisons as the previous figure, in discounted ",
+                       "duck-pairs rather than percent.")
+```
+
+```{r}
+#| label: hsw-stale-note
+#| results: asis
+#| eval: !expr sw_stale
+cat("*(Warning: some sweep runs were built from an older canonical inputs panel.",
+    "Rerun 15_run_hazard_sweep.R and 10e_results_assets_hazard_sweep.R before relying",
+    "on this section.)*")
+```
+
+To trace how policy performance changes with the level of conversion pressure, I re-ran the model at a series of conversion rates between the canonical rate (`r sw_canon` per year, the landscape-wide 2020 rate in the GCAM land-cover projection) and the Rashford et al. (2011) rate of `r sw_max` per year, with intermediate rates taken from published estimates of wetland and grassland loss in the PPR (`r sw_n` runs in total). Each run rescales conversion risk exactly as in the high-hazard run (next entry), so only the level of conversion pressure changes (by a factor of up to `r sw_kmax`); the spatial pattern and trajectory of conversion risk, and benefit, cost, budget and land cover, are identical across runs.
+
+To see which part of the rolling policy's advantage depends on the level of conversion pressure, the gap between rolling and greedy is split into two parts: myopic vs. greedy, the value of using conversion risk at all (risk frozen at current levels), and rolling vs. myopic, the value of foresight (knowing how risk and benefit change over time).
+
+*[Commentary on the results]*
+
+```{r}
+#| label: tbl-hsw
+#| tbl-cap: !expr cap_sw_table
+#| eval: !expr sw_ok
+tb <- sw %>%
+  filter(scenario %in% CLIM_SW) %>%
+  group_by(annual_rate_pct, label, k) %>%
+  summarise(mg_lo = min(mg_pct), mg_hi = max(mg_pct),
+            rm_lo = min(rm_pct), rm_hi = max(rm_pct),
+            rg_lo = min(rg_pct), rg_hi = max(rg_pct),
+            ranking = all(ranking_holds), .groups = "drop") %>%
+  arrange(annual_rate_pct)
+df <- data.frame(Rate  = sprintf("%.2f%%", tb$annual_rate_pct),
+                 Bench = tb$label,
+                 K     = sprintf("%.2f", tb$k),
+                 mg    = fmt_rng(tb$mg_lo, tb$mg_hi),
+                 rm    = fmt_rng(tb$rm_lo, tb$rm_hi),
+                 rg    = fmt_rng(tb$rg_lo, tb$rg_hi),
+                 ord   = ifelse(tb$ranking, "Yes", "NO"), check.names = FALSE)
+style_sweep_table(df,
+  groups = c("Run", "Run", "Myopic vs. Greedy", "Rolling vs. Myopic", "Rolling vs. Greedy",
+             "Ranking holds"),
+  subs   = c("Benchmark", "k", "value of using risk", "value of foresight", "total",
+             "all scenarios"),
+  footer_text = c("% improvement = (better policy \u2212 comparison policy) as % of the comparison policy's value; range across the four climate scenarios.",
+                  "Annual rate = target rate per year; for the canonical run, its habitat-weighted 2020 rate."))
+```
+
+```{r}
+#| label: fig-hsw-pct
+#| fig-cap: !expr cap_sw_pct
+#| out-width: 100%
+#| eval: !expr sw_fig_ok("fig_haz_sweep_pct.png")
+knitr::include_graphics(file.path(OUT_DIR, "fig_haz_sweep_pct.png"))
+```
+
+*[Commentary on the relative gaps]*
+
+```{r}
+#| label: fig-hsw-pairs
+#| fig-cap: !expr cap_sw_pairs
+#| out-width: 100%
+#| eval: !expr sw_fig_ok("fig_haz_sweep_pairs.png")
+knitr::include_graphics(file.path(OUT_DIR, "fig_haz_sweep_pairs.png"))
+```
+
+*[Commentary on the absolute gaps]*
+
+{{< pagebreak >}}

@@ -1,0 +1,50 @@
+{
+  "generated_date": "2026-10-27",
+  "canonical_run": "gcam_ref",
+  "canonical_annual_pct": 0.172826296775852,
+  "runs": [
+    {
+      "run_id": "gcam_ref",
+      "annual_rate_pct": 0.172826296775852,
+      "k": 1,
+      "label": "Canonical",
+      "stale": false
+    },
+    {
+      "run_id": "gcam_ref_haz0p28",
+      "annual_rate_pct": 0.28,
+      "k": 1.62711455889819,
+      "label": "Johnston 2013",
+      "stale": false
+    },
+    {
+      "run_id": "gcam_ref_haz0p4",
+      "annual_rate_pct": 0.4,
+      "k": 2.33569426029435,
+      "label": "Stephens 2008",
+      "stale": false
+    },
+    {
+      "run_id": "gcam_ref_haz0p57",
+      "annual_rate_pct": 0.57,
+      "k": 3.35122894388144,
+      "label": "Kemink 2023",
+      "stale": false
+    },
+    {
+      "run_id": "gcam_ref_haz0p95",
+      "annual_rate_pct": 0.95,
+      "k": 5.6717453526469,
+      "label": "Rashford 2011 (2006–11)",
+      "stale": false
+    },
+    {
+      "run_id": "gcam_ref_haz1p33",
+      "annual_rate_pct": 1.33,
+      "k": 8.06370556292364,
+      "label": "Rashford 2011",
+      "stale": false
+    }
+  ],
+  "any_stale": false
+}

@@ -11,6 +11,7 @@ format:
     theme: cosmo
   # docx: default                # uncomment to ALSO render Word (no LaTeX needed)
   pdf:
+    keep-tex: true
     fig-pos: 'H'                 # PIN figures where they're written (stops them floating away)
     fig-cap-location: bottom
     tbl-cap-location: top
@@ -36,6 +37,9 @@ execute:
   warning: false
   message: false
   freeze: false
+editor: 
+  markdown: 
+    wrap: 72
 ---
 
 ```{=html}
@@ -74,6 +78,10 @@ library(flextable); library(knitr)
 ## `mainfont` set in the YAML, the lualatex body font is Latin Modern Roman.
 ## If you ever set a custom `mainfont`, change this string to match it.
 set_flextable_defaults(font.family = "Latin Modern Roman")
+
+## Widest a table may be (inches). The PDF text area is ~6.2 in, and LaTeX adds
+## ~0.5 in of cell spacing on top of flextable's widths, so tables must be <= ~5.7 in.
+TABLE_MAX_W <- 5.6
 
 ## Which run to report: set in 00_config.R (LC_SCENARIO / RUN_ID). The document
 ## reads that run's folder, runs/<RUN_ID>/output_figs.
@@ -169,18 +177,20 @@ style_grouped_table <- function(df, groups, subs, footer_text = NULL,
   ft <- vline(ft, j = seps, border = bd, part = "header")
   ft <- vline(ft, j = seps, border = bd, part = "body")
   ft <- padding(ft, padding.top = 4, padding.bottom = 4, part = "all")
+  ## Give every value column the SAME width so the left/right model groups stay
+  ## symmetric. Widths are measured BEFORE the footer is added, so a long
+  ## footnote wraps instead of widening the columns.
+  wv <- dim_pretty(ft)$widths
+    wv <- dim_pretty(ft)$widths
+  w  <- c(wv[1], rep(max(wv[-1]), length(vcols)))    # Scenario natural; value columns equal
+  w  <- w * min(1, TABLE_MAX_W / sum(w))             # shrink to fit the page if too wide
+  ft <- width(ft, j = seq_len(ncol(df)), width = w)
   if (!is.null(footer_text)) {
     ft <- add_footer_lines(ft, values = footer_text)
     ft <- fontsize(ft, size = 8.5, part = "footer")
     ft <- color(ft, color = "grey40", part = "footer")
   }
-  ## Give every value column the SAME width so the left/right model groups stay
-  ## symmetric. Without this, autofit lets a long footnote stretch one group's
-  ## columns much wider than the other's (this is what skewed Table 2). ------------
-  wv <- dim_pretty(ft)$widths
-  ft <- width(ft, j = 1,     width = wv[1])          # Scenario keeps its natural width
-  ft <- width(ft, j = vcols, width = max(wv[-1]))    # all value columns equal
-  set_table_properties(ft, layout = "autofit", width = 1)
+  set_table_properties(ft, layout = "fixed")
 }
 
 ## build the two display tables from the raw CSVs -------------------------------
@@ -276,7 +286,7 @@ caps <- list(
     "points = individual EAUs. The number above each box is the % of EAUs sitting at the",
     "background conversion floor."),
   fig_cost_map = paste(
-    "**Acquisition cost per hectare, 2020 USD.** Raw dollars, no log transform, grouped",
+    "**Acquisition cost per hectare, 2020 USD inflated from 2017.** Raw dollars, no log transform, grouped",
     "into six equal-count classes.")
 )
 ```
@@ -289,64 +299,145 @@ caps <- list(
 ```
 
 # Project Overview
-This project asks whether accounting for non-stationarity leads to better land-acquisition decisions for waterfowl conservation in the U.S. Prairie Pothole Region (PPR) under different climate scenarios. It builds three decision models and compares their performance across climate-change
-scenarios and a stationary null.
 
-The three models acquire land period by period (decadal steps, 2020–2100) under a budget constraint:
+This project asks whether accounting for non-stationarity leads to
+better land-acquisition decisions for waterfowl conservation in the U.S.
+Prairie Pothole Region (PPR) under different climate scenarios. It
+builds three decision models and compares their performance across
+climate-change scenarios and a stationary null.
 
-- **Greedy** — status-quo heuristic: rank parcels by current benefit-to-cost ratio, buy
-  down the list. No foresight.
-- **Myopic ILP** — re-optimizes each decade but freezes current benefit and hazard and
-  assumes they persist (a fabricated stationary future); implements the current decade,
-  then re-solves.
-- **Rolling-horizon ILP** — same structure, but uses the true projected trajectories. The
-  foresighted benchmark. Uses Gurobi solver (academic license). 
+The three models acquire land period by period (decadal steps,
+2020–2100) under a budget constraint:
 
-The spatial unit is the **EAU** (Equal Area Unit, ~342 km²). After dropping 4 Wetland
-Management Districts, the analysis uses **879 EAUs across 20 WMDs**, over **9 decadal
-periods** and **5 scenarios** (RCP 4.5/8.5 × wet/dry, plus a stationary null).
+- **Greedy** — status-quo heuristic: rank parcels by current
+  benefit-to-cost ratio, buy down the list. No foresight.
+- **Myopic ILP** — re-optimizes each decade but freezes current benefit
+  and hazard and assumes they persist (a fabricated stationary future);
+  implements the current decade, then re-solves.
+- **Rolling-horizon ILP** — same structure, but uses the true projected
+  trajectories. The foresighted benchmark. Uses Gurobi solver (academic
+  license).
+
+The spatial unit is the **EAU** (Equal Area Unit, \~342 km²). After
+dropping 4 Wetland Management Districts, the analysis uses **879 EAUs
+across 20 WMDs**, over **9 decadal periods** and **5 scenarios** (RCP
+4.5/8.5 × wet/dry, plus a stationary null).
 
 # Data Sources
 
-- **Benefit**: McKenna, Owen P., et al. "Conservation enhances resilience of the United States Duck Factory as environmental shifts may diminish landscape-scale waterfowl breeding capacity." BioScience (2026): biag091. 
-  - projects breeding duck pairs over RCP 4.5/8.5 × wet/dry scenarios. 
-  - linear interpolation to get from obs/mid-century/end of century to decadal time steps. 
- 
-
-- **Cost**: Nolte, Christoph. "High-resolution land value maps reveal underestimation of conservation costs in the United States.". Proceedings of the National Academy of Sciences. 117.47 (2020): 29577-29583. 
+- **Benefit**: McKenna, Owen P., et al. "Conservation enhances
+  resilience of the United States Duck Factory as environmental shifts
+  may diminish landscape-scale waterfowl breeding capacity." BioScience
+  (2026): biag091.
+  - projects breeding duck pairs over RCP 4.5/8.5 × wet/dry scenarios.
+  - linear interpolation to get from obs/mid-century/end of century to
+    decadal time steps.
+- **Cost**: Nolte, Christoph. "High-resolution land value maps reveal
+  underestimation of conservation costs in the United States.".
+  Proceedings of the National Academy of Sciences. 117.47 (2020):
+  29577-29583.
   - assume 2% unfiform annual increase
-  - note no emissions or precip scenarios. 
- 
-
-- **Risk**: FOREsce (derived). Sohl, Terry L., et al. "Spatially explicit land-use and land-cover scenarios for the Great Plains of the United States." Agriculture, Ecosystems & Environment 153 (2012): 1-15.
+  - note no emissions or precip scenarios.
+- **Risk**: FOREsce (derived). Sohl, Terry L., et al. "Spatially
+  explicit land-use and land-cover scenarios for the Great Plains of the
+  United States." Agriculture, Ecosystems & Environment 153 (2012):
+  1-15.
   - `r lc_label`
-  - calculated as gross suitable habitat loss per time step. 
-  - note this has RCP 4.5 & 8.5 scenarios, but no precip scenario. 
-  
-# Model Notes
+  - calculated as gross suitable habitat loss per time step.
+  - note this has RCP 4.5 & 8.5 scenarios, but no precip scenario.
 
-- **Acquisition value is calculated as expected loss prevented:**
+# Model Formulation
 
-  $$V_{i,\tau} = \sum_{t=\tau}^{T} \delta^{t}\, b_{i,t}\,\bigl(1 - S_{i,t}\bigr)$$
+**Decision model.** Let $i \in \mathcal{I}$ index EAUs
+($|\mathcal{I}| = 879$) and $t \in \{0, \dots, T\}$ index decades (0 =
+2020, $T = 8$ = 2100). For EAU $i$ in period $t$, let $b_{i,t}$ be
+projected breeding duck pairs under a given scenario, $\lambda_{i,t}$
+the per-period probability that its suitable habitat is converted, and
+$c_{i,t}$ the cost of acquisition (land value per hectare × EAU area,
+inflated at 2% per year).
 
-    where $V_{i,\tau}$ is the value of acquiring parcel $i$ in period $\tau$, expressed as the total time-discounted sum of duck-pairs across the landscape from $\tau$ through 2100; $\delta$ is the decadal discount factor (0.95); $b_{i,t}$ is the projected benefit (duck pairs) in parcel $i$ in period $t$ under a given scenario; and $S_{i,t}$ is the probability that parcel $i$ survives (remains unconverted) through period $t$ if it is not acquired, so that $1 - S_{i,t}$ is the probability that its suitable habitat has been lost.
-  
-  Comparing acquisition policies therefore shows us the value gained by removing conversion risk from parcel i starting at $\tau$ (i.e., value of acquiring a parcel). All unacquired parcels are treated as available (i.e. subject to conversion risk) at each re-solve; conversion does not remove parcels from the set, but instead enters **only** through the weighting in the objective. Acquisition removes this weight and counts the full (time-discounted) value; unacquired parcels retain
-only their survival-discounted value.
+*Survival.* If EAU $i$ is not acquired, the probability that it remains
+unconverted through period $t$ is
 
-- **Budget**: set to a scalable amount based on a number of "median priced" EAUs per period. Currently set to the dollar equivalent of 5-median priced EAUs per period. 
+$$S_{i,0} = 1, \qquad S_{i,t} = \prod_{s=0}^{t-1} \left(1 - \lambda_{i,s}\right), \quad t \ge 1.$$
 
-- **Discount Factor**: 0.95 decadal  
+where for a given EAU, its per-decade survival probability is defined as 1-$\lambda_{i,t}$ (i.e., the conversion hazard risk) and the cumulative survival probability in time $t$ is the product of each decade's survival probability from 2020 through the decade just before $t$ ($t$-1). 
+
+*Acquisition value.* The conservation value of acquiring an EAU is calculated as the expected loss its acquisition prevents. Acquiring EAU $i$ in period $\tau$ protects its benefit with certainty from $\tau$ onward.
+
+$$V_{i,\tau} = \sum_{t=\tau}^{T} \delta^{t}\, b_{i,t} \left(1 - S_{i,t}\right),$$
+where $V_{i,\tau}$ is the value of acquiring parcel $i$ in period
+$\tau$, expressed as the total time-discounted sum of duck-pairs
+across the landscape from $\tau$ through 2100; $\delta$ is the decadal
+discount factor (0.95); $b_{i,t}$ is the projected benefit (duck
+pairs) in parcel $i$ in period $t$ under a given scenario; and
+$S_{i,t}$ is the probability that parcel $i$ survives (i.e., remains
+unconverted) through period $t$ if it is not acquired, so that
+$1 - S_{i,t}$ is the probability of conversion. Total landscape value under any acquisition schedule equals the
+value of doing nothing plus $\sum_i V_{i,\tau_i}$ (i.e., the sum of acquisition value), summed over all acquired parcel.
+
+All unacquired parcels are treated as
+available (i.e. subject to conversion risk) at each re-solve;
+conversion does not remove parcels from the set, but instead enters
+**only** through the weighting in the objective. Acquisition removes
+this weight and counts the full (time-discounted) value; unacquired
+parcels retain only their survival-discounted value.
+
+*Optimization.* Let $x_{i,t} \in \{0,1\}$ equal 1 if EAU $i$ is acquired
+in period $t$, and let $\mathcal{A}_\tau$ be the set of EAUs not yet
+acquired at the start of period $\tau$. At each decision period $\tau$,
+the ILP policies solve
+
+$$\max_{x} \; \sum_{i \in \mathcal{A}_\tau} \sum_{t=\tau}^{T} \hat{V}_{i,t}\, x_{i,t}$$
+
+subject to
+
+$$\begin{aligned}
+\sum_{t=\tau}^{T} x_{i,t} &\le 1 && \forall\, i \in \mathcal{A}_\tau && \text{(each EAU acquired at most once)} \\
+\sum_{i \in \mathcal{A}_\tau} c_{i,t}\, x_{i,t} &\le B_t && \forall\, t = \tau, \dots, T && \text{(per-period budget)} \\
+x_{i,t} &\in \{0,1\}.
+\end{aligned}$$
+
+Only the period-$\tau$ decisions are carried out. Then
+$\mathcal{A}_{\tau+1} = \mathcal{A}_\tau \setminus \{i : x_{i,\tau} = 1\}$
+and the problem is solved again. Conversion does not remove parcels from
+$\mathcal{A}_\tau$; it enters only through the weight $(1 - S_{i,t})$.
+
+The policies differ only in $\hat{V}$. For the rolling-horizon policy,
+$\hat{V}_{i,t} = V_{i,t}$, computed from the projected trajectories of
+$b$ and $\lambda$. For the myopic policy, benefit and hazard are held at
+their period-$\tau$ values for the whole horizon, so the coefficients
+are recomputed at every solve:
+
+$$\hat{V}^{(\tau)}_{i,t} = \sum_{s=t}^{T} \delta^{s}\, b_{i,\tau} \left[1 - \left(1 - \lambda_{i,\tau}\right)^{s}\right].$$
+
+*Budget.* The budget for each period is
+
+$$B_t = k \cdot \operatorname*{median}_{i \in \mathcal{I}} \left(c_{i,t}\right), \qquad k = 5 \;\; (\text{sensitivity: } k \in \{2, 10\}).$$
+
+Because all costs inflate at the same rate, $B_t$ is constant in real
+terms. The budget cannot be carried forward or borrowed against. The
+greedy policy is held to the same $B_t$: in each period it acquires
+available EAUs in decreasing order of $b_{i,t}/c_{i,t}$ until no
+remaining EAU fits within what is left of $B_t$.
+
 
 {{< pagebreak >}}
-
 
 # Results
 
 ## Descriptive Summary
 
 ### Duck distribution
-Consistent with other studies (e.g., McKenna et al, 2026), duck abundance is higher in the western portion of the PPR than the eastern portion. This overall distribution pattern continues through 2100 (Fig. 1). In all scenarios, duck abundance is predicted to decline across the PPR by 2100, although wet scenarios fare better than dry scenarios (Fig. 2). Note that this figure was produced after a spatial join error was corrected. 
+
+Consistent with other studies (e.g., McKenna et al, 2026), duck
+abundance is higher in the western portion of the PPR than the eastern
+portion. This overall distribution pattern continues through 2100 (Fig.
+1). In all scenarios, duck abundance is predicted to decline across the
+PPR by 2100, although wet scenarios fare better than dry scenarios (Fig.
+2). Note that this figure was produced after a spatial join error was
+corrected.
+
 ```{r}
 #| label: fig-benefit-map
 #| fig-cap: !expr caps$fig_benefit_map
@@ -365,9 +456,15 @@ knitr::include_graphics(file.path(OUT_DIR, "fig_benefit_ribbon.png"))
 
 {{< pagebreak >}}
 
-
 ### Risk
-Risk of conversion across all EAUs is heavily skewed, with the vast majority of EAUs showing a nearly zero per period conversion risk; the maximum per period conversion risk for a given EAU is ~15%. There is a sharp drop in per period conversion risk in 2050, which is a function of the FOREsce model: cropland conversion is frontloaded through 2050, at which point conversions to cropland decline. Note that this metric has been corrected from net habitat loss to gross habitat loss.
+
+Risk of conversion across all EAUs is heavily skewed, with the vast
+majority of EAUs showing a nearly zero per period conversion risk; the
+maximum per period conversion risk for a given EAU is \~15%. There is a
+sharp drop in per period conversion risk in 2050, which is a function of
+the FOREsce model: cropland conversion is frontloaded through 2050, at
+which point conversions to cropland decline. Note that this metric has
+been corrected from net habitat loss to gross habitat loss.
 
 ```{r}
 #| label: fig-risk-box
@@ -379,9 +476,11 @@ knitr::include_graphics(file.path(OUT_DIR, "fig_risk_box.png"))
 
 {{< pagebreak >}}
 
-
 ### Cost
-Acquisition cost per hectare in USD 2020. High cost parcels are concentrated in the eastern portion of the PPR, consistent with other analyses (e.g., Ando and Mallory, 2012). 
+
+Acquisition cost per hectare in USD 2020. High cost parcels are
+concentrated in the eastern portion of the PPR, consistent with other
+analyses (e.g., Ando and Mallory, 2012).
 
 ```{r}
 #| label: fig-cost-map
@@ -406,10 +505,24 @@ cat("*(Descriptive figures not generated \u2014 the inputs panel was absent when
 
 ## Relative performance of acquisition policies
 
-The major findings of this study compare the difference between total benefit secured across the landscape (2020-2100) under the rolling ILP policy as compared to the greedy or myopic policy. As expected, the rolling policy outperforms both the myopic and the greedy policy; the performance gap between the rolling policy and the greedy policy is larger than the rolling-myopic gap. Rolling provides a 18-20% improvement over myopic, and a ~49-57% improvement over greedy. Under stationarity, there is virtually no difference (as expected, since a stationary environment provides no penalty for policies without foresight). The rolling policy outperforms the myopic and greedy policies under all climate scenarios, consistent with our expectations that an acquisition policy with foresight should outperform a policy with no or limited foresight under any degree of non-stationarity. 
+The major findings of this study compare the difference between total
+benefit secured across the landscape (2020-2100) under the rolling ILP
+policy as compared to the greedy or myopic policy. As expected, the
+rolling policy outperforms both the myopic and the greedy policy; the
+performance gap between the rolling policy and the greedy policy is
+larger than the rolling-myopic gap. Rolling provides a 18-20%
+improvement over myopic, and a \~49-57% improvement over greedy. Under
+stationarity, there is virtually no difference (as expected, since a
+stationary environment provides no penalty for policies without
+foresight). The rolling policy outperforms the myopic and greedy
+policies under all climate scenarios, consistent with our expectations
+that an acquisition policy with foresight should outperform a policy
+with no or limited foresight under any degree of non-stationarity.
 
-**My interpretation: A non-stationary, climate-aware acquisition policy could deliver a ~50% improvement in conservation outcomes as compared to the greedy (i.e., status quo) acquisition policy in use today, potentially protecting an additional 37,000-69,000 duck pairs by 2100**. 
-
+**My interpretation: A non-stationary, climate-aware acquisition policy
+could deliver a \~50% improvement in conservation outcomes as compared
+to the greedy (i.e., status quo) acquisition policy in use today,
+potentially protecting an additional 37,000-69,000 duck pairs by 2100**.
 
 ```{r}
 #| label: tbl-gap-vs-rolling
@@ -427,9 +540,17 @@ style_grouped_table(
 
 {{< pagebreak >}}
 
-Another way of describing this is to ask how short of optimal the greedy and myopic policies fall. Here, the rolling policy is used as the provably near-optimal benchmark (MIP gap 0.01% across all rolling solves), and performance gaps are expressed as a % of rolling. The myopic policy falls ~15-17% short of rolling, and the greedy policy falls ~33-36% short of rolling. 
+Another way of describing this is to ask how short of optimal the greedy
+and myopic policies fall. Here, the rolling policy is used as the
+provably near-optimal benchmark (MIP gap 0.01% across all rolling
+solves), and performance gaps are expressed as a % of rolling. The
+myopic policy falls \~15-17% short of rolling, and the greedy policy
+falls \~33-36% short of rolling.
 
-**My interpretation: Current use of acquisition policies that assume environmental stationarity fall short of an optimal acquisition policy by ~30%, failing to secure an additional 37,000-69,000 potential duck pairs by 2100**. 
+**My interpretation: Current use of acquisition policies that assume
+environmental stationarity fall short of an optimal acquisition policy
+by \~30%, failing to secure an additional 37,000-69,000 potential duck
+pairs by 2100**.
 
 ```{r}
 #| label: tbl-shortfall-vs-rolling
@@ -449,8 +570,12 @@ style_grouped_table(
 
 ## Relative performance over time
 
-This graph shows how the gap between the rolling policy and the myopic/greedy policies grows over time. This is presented as net changes in duck pairs, using the rolling policy as a benchmark (value added gap for rolling = 0). As expected, the cumulative gap in performance between rolling and greedy/myopic grows over time (negative values only); and greedy is substantially worse than myopic (red always < yellow). 
-
+This graph shows how the gap between the rolling policy and the
+myopic/greedy policies grows over time. This is presented as net changes
+in duck pairs, using the rolling policy as a benchmark (value added gap
+for rolling = 0). As expected, the cumulative gap in performance between
+rolling and greedy/myopic grows over time (negative values only); and
+greedy is substantially worse than myopic (red always \< yellow).
 
 ```{r}
 #| label: fig-overtime
@@ -463,11 +588,29 @@ knitr::include_graphics(file.path(OUT_DIR, "overtime_gap.png"))
 
 ## Acquisition value over baseline
 
-This table compares the total benefit secured across the landscape (2020-2100) through the three acquisition policies against a "do-nothing" baseline scenario in which no parcels are acquired. All acquisition policies outperform the do-nothing baseline under climate change scenarios; there is no improvement under assumptions of stationarity (as expected: stationarity freezes conversion risk to effectively zero). 
+This table compares the total benefit secured across the landscape
+(2020-2100) through the three acquisition policies against a
+"do-nothing" baseline scenario in which no parcels are acquired. All
+acquisition policies outperform the do-nothing baseline under climate
+change scenarios; there is no improvement under assumptions of
+stationarity (as expected: stationarity freezes conversion risk to
+effectively zero).
 
-Even a greedy acquisition policy outperforms a do-nothing policy; myopic and rolling policies each respectively improve upon that baseline. As expected based on the duck density projections, wet/dry scenario is a larger determinant of improvement than RCP scenario. 
+Even a greedy acquisition policy outperforms a do-nothing policy; myopic
+and rolling policies each respectively improve upon that baseline. As
+expected based on the duck density projections, wet/dry scenario is a
+larger determinant of improvement than RCP scenario.
 
-Overall improvement of any acquisition policy, expressed in % over baseline, is relatively small (0.64% at best). This is likely an artifact of how conversion risk is being calculated in this model (a measure of habitat erosion standing in for habitat conversion probability). It may also be related to a relatively conservative budget parameter (only ~60-70 EAUs are acquired in most scenarios). That said, these numbers might not be that different from real world estimates: Kemnick et al 2023 estimated that the program impact for SWAP was "an avoided loss between 0.00% and 0.02% of the carrying capacity for broods and breeding waterfowl from 2008–2017."
+Overall improvement of any acquisition policy, expressed in % over
+baseline, is relatively small (0.64% at best). This is likely an
+artifact of how conversion risk is being calculated in this model (a
+measure of habitat erosion standing in for habitat conversion
+probability). It may also be related to a relatively conservative budget
+parameter (only \~60-70 EAUs are acquired in most scenarios). That said,
+these numbers might not be that different from real world estimates:
+Kemnick et al 2023 estimated that the program impact for SWAP was "an
+avoided loss between 0.00% and 0.02% of the carrying capacity for broods
+and breeding waterfowl from 2008–2017."
 
 ```{=latex}
 \needspace{13\baselineskip}   % keep this whole table on one page (moves to next page if it won't fit)
@@ -484,7 +627,15 @@ style_grouped_table(
 
 ## Acquisitions by policy: rolling vs myopic
 
-This map shows parcels that are acquired under both rolling and myopic acquisition schedules; those that are acquired only under rolling; and those that are acquired only under myopic. Light blue parcels are those that are purchased only under an optimal acquisition policy; the myopic model skips these parcels. The orange parcels are ones that the myopic policy purchased but the rolling policy declined to purchase. Interpretation here is that light blue parcels are where the rolling policy's advantage comes from; orange is where the myopic dedicated funds sub-optimally. 
+This map shows parcels that are acquired under both rolling and myopic
+acquisition schedules; those that are acquired only under rolling; and
+those that are acquired only under myopic. Light blue parcels are those
+that are purchased only under an optimal acquisition policy; the myopic
+model skips these parcels. The orange parcels are ones that the myopic
+policy purchased but the rolling policy declined to purchase.
+Interpretation here is that light blue parcels are where the rolling
+policy's advantage comes from; orange is where the myopic dedicated
+funds sub-optimally.
 
 ```{r}
 #| label: fig-foresight
@@ -533,63 +684,139 @@ cat("*(Maps not generated — the spatial schedule was absent when",
 
 ### 9/30/2026: Protected Area Removal
 
-In examining the conversion risk, we realized that the previous conversion risk included protected area in the total pool of potentially available habitat, which artificially diluted the estimated conversion risk. To address this, I overlayed the USGS Protected Area Database (PADUS) and calculated the gross suitable habitat loss with protected areas removed. This revised gross suitable habitat rate was used in the risk of loss calculation (i.e., script 05); however, the other uses of landcover data (such as distributing waterfowl density within a WMD) continue to use the unmasked raster with protected areas included. 
+In examining the conversion risk, we realized that the previous
+conversion risk included protected area in the total pool of potentially
+available habitat, which artificially diluted the estimated conversion
+risk. To address this, I overlayed the USGS Protected Area Database
+(PADUS) and calculated the gross suitable habitat loss with protected
+areas removed. This revised gross suitable habitat rate was used in the
+risk of loss calculation (i.e., script 05); however, the other uses of
+landcover data (such as distributing waterfowl density within a WMD)
+continue to use the unmasked raster with protected areas included.
 
-To overlay the PADUS layer, I used the PAD-US 4.1 Vector Analysis (USGS GAP, 2024, PAD-US 4.1, https://doi.org/10.5066/P96WBCHS) and masked out polygons marked as GAP Status Code 1-3 (which covers areas with permanent protection, like National Parks, and areas where "low intensity" land uses is allowed). I then created a 0/1 raster of protected land within the PPR, and removed those areas when calculating the gross habitat loss. 
+To overlay the PADUS layer, I used the PAD-US 4.1 Vector Analysis (USGS
+GAP, 2024, PAD-US 4.1, https://doi.org/10.5066/P96WBCHS) and masked out
+polygons marked as GAP Status Code 1-3 (which covers areas with
+permanent protection, like National Parks, and areas where "low
+intensity" land uses is allowed). I then created a 0/1 raster of
+protected land within the PPR, and removed those areas when calculating
+the gross habitat loss.
 
-Updating the conversion risk to exclude protected areas increases the comparative performance of the optimal model over the greedy model by ~3-4 percentage points; it's noticeable, but not a fundamental change to the takeaway message. 
-
+Updating the conversion risk to exclude protected areas increases the
+comparative performance of the optimal model over the greedy model by
+\~3-4 percentage points; it's noticeable, but not a fundamental change
+to the takeaway message.
 
 ### 9/15/2026: Conversion Risk Update: Net vs Gross Habitat loss:
-Delving in to the calculations of how I quantified conversion risk, I realized that I was using net rather than gross habitat loss. This was not conceptually consistent with what I presented, which I intended to be the proportion of suitable habitat in time t that was lost by time t+1 (a flow). Instead, I had calculated the difference between the stock of suitable habitat in time t - t+1, which reflects both losses and gains in suitable habitat.  
 
-I changed the calculations to see going from net to gross would affect the estimate of conversion risk. I found that there is a fair amount of habitat recovery in the FOREsce models, so some of those habitat gains showed in the net calculation were concealing real habitat losses. The table below compares the net vs gross habitat loss rate (gross > net in all decades but particularly mid-century). In addition, the use of the net metric in the first model run meant that some EAUs had a "positive" habitat loss (i.e., overall habitat gain), which I corrected for by imposing a data-derived epsilon (floor). With the gross metric, that is no longer needed (net loss >= 0). The table also shows the percent of EAUs that were "censored" by the artificial floor (i.e., which really had habitat loss but which was hidden by habitat gain). 
+Delving in to the calculations of how I quantified conversion risk, I
+realized that I was using net rather than gross habitat loss. This was
+not conceptually consistent with what I presented, which I intended to
+be the proportion of suitable habitat in time t that was lost by time
+t+1 (a flow). Instead, I had calculated the difference between the stock
+of suitable habitat in time t - t+1, which reflects both losses and
+gains in suitable habitat.
 
-| Decade | gross | net | % of EAUs censored |
-|---|---|---|---|---|
-| 2020–2040 | ~0.018 | ~0.017 |  0.5–7% |
-| **2050–2070 (4.5)** | ~0.002 | 0.0009 | **14–17%** |
-| **2050–2070 (8.5)** | ~0.002 | −0.0009 | **16–24%** |
-| 2080–2090 | ~0.003 | ~0.002 | ~4% |
+I changed the calculations to see going from net to gross would affect
+the estimate of conversion risk. I found that there is a fair amount of
+habitat recovery in the FOREsce models, so some of those habitat gains
+showed in the net calculation were concealing real habitat losses. The
+table below compares the net vs gross habitat loss rate (gross \> net in
+all decades but particularly mid-century). In addition, the use of the
+net metric in the first model run meant that some EAUs had a "positive"
+habitat loss (i.e., overall habitat gain), which I corrected for by
+imposing a data-derived epsilon (floor). With the gross metric, that is
+no longer needed (net loss \>= 0). The table also shows the percent of
+EAUs that were "censored" by the artificial floor (i.e., which really
+had habitat loss but which was hidden by habitat gain).
 
-While we were missing meaningful habitat loss by using the net metric, changing to the gross metric didn't substantially change the overall model results. When I used gross instead of net habitat loss, this increased the performance of the rolling model over the greedy model by ~1-2 percentage points. 
+| Decade              | gross   | net     | \% of EAUs censored |     |
+|---------------------|---------|---------|---------------------|-----|
+| 2020–2040           | \~0.018 | \~0.017 | 0.5–7%              |     |
+| **2050–2070 (4.5)** | \~0.002 | 0.0009  | **14–17%**          |     |
+| **2050–2070 (8.5)** | \~0.002 | −0.0009 | **16–24%**          |     |
+| 2080–2090           | \~0.003 | \~0.002 | \~4%                |     |
+
+While we were missing meaningful habitat loss by using the net metric,
+changing to the gross metric didn't substantially change the overall
+model results. When I used gross instead of net habitat loss, this
+increased the performance of the rolling model over the greedy model by
+\~1-2 percentage points.
 
 ### 7/30/2026: Spatial Join error
-I discovered an error in the spatial join of the extracted land cover data and the model's data panel. I realized that the landcover data was joined to EAUs by row position, which introduced errors- land classification (% suitable habitat) was joined to the wrong EAUs. Conversion risk (hazard) was the variable most affected- the trans_prob were not attached to the correct spatial unit. Because duck density is distributed according to % suitable, it also meant that duck distributions were incorrect- but the scale of this error was mitigated by the fact that WMD-scale determines the absolute amount of duck density. This meant that WMD level abundance numbers are fine, but distribution within WMD to EAUs was incorrect; cost numbers are unaffected. 
 
-Because of this, I had incorrectly believed that most of the EAUs with missing landcover data were concentrated in Winsom, which is why I removed it- but I discovered that this wasn’t actually the case. There were in fact multiple WMDs with at least a few EAUs missing data. I needed to make a cut off threshold (% EAU with missing data above which the WMD would be excluded); I decided to make a cap of 20% (i.e., any WMD missing 20% of EAU land cover data would be excluded). This removed one WMD (Fergus Falls), and left ~8 WMDs with some small % of landcover data missing (2-13%). Note that this means that in those remaining WMDs, the full WMD duck numbers are more densely concentrated in the remaining EAUs. 
+I discovered an error in the spatial join of the extracted land cover
+data and the model's data panel. I realized that the landcover data was
+joined to EAUs by row position, which introduced errors- land
+classification (% suitable habitat) was joined to the wrong EAUs.
+Conversion risk (hazard) was the variable most affected- the trans_prob
+were not attached to the correct spatial unit. Because duck density is
+distributed according to % suitable, it also meant that duck
+distributions were incorrect- but the scale of this error was mitigated
+by the fact that WMD-scale determines the absolute amount of duck
+density. This meant that WMD level abundance numbers are fine, but
+distribution within WMD to EAUs was incorrect; cost numbers are
+unaffected.
 
-When I fixed this, I saw that the spatial distribution of duck abundance is now more clearly aligned with McKenna 2026 (good news!). Compare Fig. 1 with Fig. 1 from "results_07302026". There is also now a clearer alignment of duck abundance and LOW acquisition cost: this is more consistent with the literature, which regularly finds that the highest duck abundance is in the western PPR where land prices are also lower. But the major model findings don't change at all (i.e., rolling outperforms both myopic and greedy, overall acquisition rate remains low)
+Because of this, I had incorrectly believed that most of the EAUs with
+missing landcover data were concentrated in Winsom, which is why I
+removed it- but I discovered that this wasn’t actually the case. There
+were in fact multiple WMDs with at least a few EAUs missing data. I
+needed to make a cut off threshold (% EAU with missing data above which
+the WMD would be excluded); I decided to make a cap of 20% (i.e., any
+WMD missing 20% of EAU land cover data would be excluded). This removed
+one WMD (Fergus Falls), and left \~8 WMDs with some small % of landcover
+data missing (2-13%). Note that this means that in those remaining WMDs,
+the full WMD duck numbers are more densely concentrated in the remaining
+EAUs.
 
-
+When I fixed this, I saw that the spatial distribution of duck abundance
+is now more clearly aligned with McKenna 2026 (good news!). Compare Fig.
+1 with Fig. 1 from "results_07302026". There is also now a clearer
+alignment of duck abundance and LOW acquisition cost: this is more
+consistent with the literature, which regularly finds that the highest
+duck abundance is in the western PPR where land prices are also lower.
+But the major model findings don't change at all (i.e., rolling
+outperforms both myopic and greedy, overall acquisition rate remains
+low)
 
 {{< pagebreak >}}
 
-
-
 ## 7/10/2026: Temporal alignment of benefit data
 
-After the initial model run, I realized there was a problem with the temporal alignment of the benefit data with the landcover data (and the decision model itself). The benefit data is as follows:
+After the initial model run, I realized there was a problem with the
+temporal alignment of the benefit data with the landcover data (and the
+decision model itself). The benefit data is as follows:
 
-- "Obs" = mean 2007–2017 
+- "Obs" = mean 2007–2017
 - "3059" = mean 2030–2059
 - "7099" = mean 2070–2099
 
 Originally, I had aligned it as follows:
 
-- "Obs" = mean 2007–2017 -> 2020
-- "3059" = mean 2030–2059 -> 2050 
-- "7099" = mean 2070–2099 -> 2100
+- "Obs" = mean 2007–2017 -\> 2020
+- "3059" = mean 2030–2059 -\> 2050
+- "7099" = mean 2070–2099 -\> 2100
 
-After talking with Owen, I updated the alignment to use window midpoints :
+After talking with Owen, I updated the alignment to use window midpoints
 
-- "Obs" = mean 2007–2017 -> 2012
-- "3059" = mean 2030–2059 -> 2045 
-- "7099" = mean 2070–2099 -> 285
+:   
 
-Notes: The 2020 baseline is produced by interpolating each RCP×GCM combo on its 2012→2045 segment and then averaging across the four combos into one shared period-0 row (preserves the shared-baseline used for the 2020 risk). Decades 2030/2040 interpolate on the 2012→2045 segment; 2050–2080 on the 2045→2085 segment; 2090 and 2100 are held constant at the 2085 value
+- "Obs" = mean 2007–2017 -\> 2012
+- "3059" = mean 2030–2059 -\> 2045
+- "7099" = mean 2070–2099 -\> 285
 
-I re-ran the model with this midpoint temporal alignment of benefit data; saw little difference in model results. My takeaway is that we can reasonably use this midpoint alignment, and importantly that it doesn’t much matter for model results. 
+Notes: The 2020 baseline is produced by interpolating each RCP×GCM combo
+on its 2012→2045 segment and then averaging across the four combos into
+one shared period-0 row (preserves the shared-baseline used for the 2020
+risk). Decades 2030/2040 interpolate on the 2012→2045 segment; 2050–2080
+on the 2045→2085 segment; 2090 and 2100 are held constant at the 2085
+value
+
+I re-ran the model with this midpoint temporal alignment of benefit
+data; saw little difference in model results. My takeaway is that we can
+reasonably use this midpoint alignment, and importantly that it doesn’t
+much matter for model results.
 
 ```{=latex}
 \needspace{13\baselineskip}   % keep this whole table on one page
@@ -617,7 +844,6 @@ style_grouped_table(align_mid, groups_mid, subs_mid,
                        " comparison)."))
 ```
 
-
 ```{=latex}
 \needspace{12\baselineskip}   % keep this whole table on one page
 ```
@@ -642,7 +868,3 @@ style_grouped_table(align_gap, groups_gap, subs_gap,
 ```
 
 {{< pagebreak >}}
-
-
-
- 

@@ -92,7 +92,7 @@ style_bud_table <- function(df, n_lead, lead_labs, groups, subs, footer_text = N
     ft <- color(ft, color = "grey40", part = "footer")
     ft <- align(ft, align = "left", part = "footer")
   }
-  set_table_properties(ft, layout = "autofit")
+  set_table_properties(ft, layout = "fixed")
 }
 
 ## body text coloured by the policy each column refers to (as in the main tables)

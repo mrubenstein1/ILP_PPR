@@ -66,7 +66,7 @@ style_cmp_table <- function(df, groups, subs, footer_text = NULL, bold_cells = N
     ft <- color(ft, color = "grey40", part = "footer")
     ft <- align(ft, align = "left", part = "footer")
   }
-  set_table_properties(ft, layout = "autofit")
+  set_table_properties(ft, layout = "fixed")
 }
 
 ## captions (edit here) ----------------------------------------------------------
