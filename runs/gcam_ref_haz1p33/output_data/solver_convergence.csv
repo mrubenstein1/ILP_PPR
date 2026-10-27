@@ -1,0 +1,11 @@
+"tag","n_solves","n_hit_timelimit","worst_gap_pct","total_runtime_s"
+"rcp45_dry/myopic",9,3,NA,233.2
+"rcp45_dry/rolling",9,3,NA,207.8
+"rcp45_wet/myopic",9,2,NA,148.5
+"rcp45_wet/rolling",9,2,NA,216.9
+"rcp85_dry/myopic",9,4,NA,248.5
+"rcp85_dry/rolling",9,3,NA,242.1
+"rcp85_wet/myopic",9,3,NA,189
+"rcp85_wet/rolling",9,4,NA,308.4
+"stationary/myopic",9,5,NA,305.5
+"stationary/rolling",9,5,NA,305.5

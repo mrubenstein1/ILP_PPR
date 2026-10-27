@@ -1,0 +1,13 @@
+{
+  "generated": "2026-10-26T17:27:59",
+  "generated_date": "2026-10-26",
+  "maps_drawn": true,
+  "run_id": "gcam_ref_haz0p4",
+  "derived_run_id": "gcam_ref_haz0p4",
+  "budget_eaus_per_period": 5,
+  "hazard_target_annual_pct": 0.4,
+  "hazard_k": 2.3357,
+  "lc_scenario": "gcam_ref",
+  "lc_label": "GCAM reference scenario",
+  "r_version": "R version 4.5.2 (2025-10-31)"
+}

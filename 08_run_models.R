@@ -42,6 +42,17 @@ if (identical(SPEND_DOWN_MODE, "off"))
   cat("  (spend_down off — reproduces the pre-spend-down numbers.)\n")
 
 # ── 0. Load the data panel ────────────────────────────────────────────────────####
+# High-hazard run: the panel is the rescaled copy written by 14_build_hazard_panel.R,
+# and the scaling factor k it solved is recorded alongside it.
+HAZARD_K <- 1
+if (HAZARD_RUN) {
+  hz_json <- file.path(DIR_DERIVED, "hazard_scaling.json")
+  if (!file.exists(hz_json))
+    stop("High-hazard run but ", hz_json, " not found. Build the scaled panel first:\n",
+         "  PPR_HAZARD=", .hazard_env, " Rscript 14_build_hazard_panel.R", call. = FALSE)
+  HAZARD_K <- jsonlite::read_json(hz_json)$k
+}
+
 panel_path <- file.path(DIR_DERIVED, "data_panel.rds")
 if (!file.exists(panel_path))
   stop("data_panel.rds not found at ", panel_path, ". Run scripts 01-06 for ",
@@ -232,6 +243,8 @@ saveRDS(list(results = results, trajectories = trajectories,
                            run_id = RUN_ID,
                            derived_run_id = DERIVED_RUN_ID,
                            budget_eaus_per_period = BUDGET_EAUS_PER_PERIOD,
+                           hazard_target_annual_pct = HAZARD_TARGET_ANNUAL_PCT,
+                           hazard_k = HAZARD_K,
                            solver_time_limit = SOLVER_TIME_LIMIT,
                            solver_mip_gap = SOLVER_MIP_GAP,
                            solver_threads = SOLVER_THREADS,

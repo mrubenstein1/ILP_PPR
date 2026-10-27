@@ -1,0 +1,17 @@
+{
+  "generated_date": "2026-10-26",
+  "base_run": "gcam_ref",
+  "base_short": "Canonical",
+  "alt_run": "gcam_ref_haz1p33",
+  "alt_short": "High hazard",
+  "target_annual_pct": 1.33,
+  "target_decadal": 0.125315799243125,
+  "k": 8.06370556292364,
+  "k_unweighted": 7.4266774372168,
+  "canonical_mean_2020_weighted": 0.0171488370844503,
+  "scaled_mean_2020_weighted": 0.125315799243125,
+  "source_panel_md5_match": true,
+  "thresh_pp": 2,
+  "overlap_drawn": true,
+  "risk_drawn": true
+}

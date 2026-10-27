@@ -1,0 +1,150 @@
+<!-- ════════════════════════════════════════════════════════════════════════════
+ 11d_hazard_sensitivity.qmd — child document, included by 11_results.qmd under
+ Updates ONLY IF 10d_results_assets_hazard.R has been run (haz_metadata.json
+ exists in the canonical run's output_figs). Do not render this file on its own:
+ it uses objects defined in 11_results.qmd's setup chunk (OUT_DIR, GREEN_HEADER,
+ SCEN_LAB1, fmt_pairs, DELTA). Write the prose in the *[Commentary …]* placeholders.
+═════════════════════════════════════════════════════════════════════════════ -->
+
+### 10/26/2026: High conversion-hazard run (Rashford et al. 2011)
+
+```{r}
+#| label: haz-setup
+#| include: false
+## Assets are written by 10d_results_assets_hazard.R from the canonical run (base)
+## and the high-hazard run (alternative). Differences are high hazard − canonical.
+hmeta <- tryCatch(
+  jsonlite::read_json(file.path(OUT_DIR, "haz_metadata.json"), simplifyVector = TRUE),
+  error = function(e) NULL)
+haz_ok      <- !is.null(hmeta) && file.exists(file.path(OUT_DIR, "haz_headline.csv")) &&
+               file.exists(file.path(OUT_DIR, "haz_value_added.csv"))
+haz_ovl_ok  <- haz_ok && isTRUE(hmeta$overlap_drawn) &&
+               file.exists(file.path(OUT_DIR, "haz_overlap.csv"))
+haz_risk_ok <- haz_ok && isTRUE(hmeta$risk_drawn) &&
+               file.exists(file.path(OUT_DIR, "fig_haz_risk_box.png"))
+haz_stale   <- haz_ok && isFALSE(hmeta$source_panel_md5_match)
+HB <- if (haz_ok) hmeta$base_short else "Canonical"
+HA <- if (haz_ok) hmeta$alt_short  else "High hazard"
+HT <- if (haz_ok) hmeta$thresh_pp  else 2
+
+## numbers used inline in the prose
+h_target_yr  <- if (haz_ok) sprintf("%.2f%%", hmeta$target_annual_pct) else "?"
+h_target_dec <- if (haz_ok) sprintf("%.1f%%", 100 * hmeta$target_decadal) else "?"
+h_canon_dec  <- if (haz_ok) sprintf("%.1f%%", 100 * hmeta$canonical_mean_2020_weighted) else "?"
+h_k          <- if (haz_ok) sprintf("%.2f", hmeta$k) else "?"
+
+fmt_h1  <- function(x) ifelse(is.na(x), "\u2014", sprintf("%.1f%%", x))
+fmt_hpp <- function(x) ifelse(is.na(x), "\u2014", sprintf("%+.1f", x))
+fmt_hx  <- function(x) ifelse(is.na(x), "\u2014", sprintf("%.2f\u00d7", x))
+fmt_hj  <- function(x) ifelse(is.na(x), "\u2014", sprintf("%.2f", x))
+
+## Same table look as the comparison tables in 11b_landcover_comparison.qmd.
+style_haz_table <- function(df, groups, subs, footer_text = NULL, bold_cells = NULL,
+                            first_lab = "Scenario", font_size = 8.5) {
+  rle_g <- rle(groups)
+  seps  <- c(1, head(1 + cumsum(rle_g$lengths), -1))
+  bd    <- officer::fp_border(color = "#dddddd", width = 1)
+  ft <- flextable(df)
+  ft <- set_header_labels(ft, values = setNames(as.list(c("", subs)), names(df)))
+  ft <- add_header_row(ft, top = TRUE, values = c(first_lab, rle_g$values),
+                       colwidths = c(1, rle_g$lengths))
+  ft <- merge_at(ft, i = 1:2, j = 1, part = "header")
+  ft <- bg(ft, part = "header", bg = GREEN_HEADER)
+  ft <- color(ft, part = "header", color = "white")
+  ft <- bold(ft, part = "header")
+  ft <- align(ft, align = "center", part = "all")
+  ft <- align(ft, j = 1, align = "left", part = "all")
+  ft <- valign(ft, j = 1, valign = "center", part = "header")
+  ft <- bold(ft, j = 1, part = "body")
+  if (nrow(df) > 1) ft <- bg(ft, i = seq(2, nrow(df), by = 2), bg = "#f5f5f2", part = "body")
+  for (bc in bold_cells) ft <- bold(ft,  i = bc[1], j = bc[2], part = "body")
+  for (bc in bold_cells) ft <- color(ft, i = bc[1], j = bc[2], color = "#B0413E", part = "body")
+  ft <- border_remove(ft)
+  ft <- hline(ft, i = 1, part = "header", border = officer::fp_border(color = "white", width = 1))
+  ft <- vline(ft, j = seps, border = bd, part = "header")
+  ft <- vline(ft, j = seps, border = bd, part = "body")
+  ft <- padding(ft, padding.top = 3, padding.bottom = 3, padding.left = 3,
+                padding.right = 3, part = "all")
+  ft <- fontsize(ft, size = font_size, part = "all")
+  ft <- autofit(ft)                      # header + body only: footer not added yet
+  if (!is.null(footer_text)) {
+    ft <- add_footer_lines(ft, values = footer_text)
+    ft <- fontsize(ft, size = 7.5, part = "footer")
+    ft <- color(ft, color = "grey40", part = "footer")
+    ft <- align(ft, align = "left", part = "footer")
+  }
+  set_table_properties(ft, layout = "autofit")
+}
+
+## captions (edit here) ----------------------------------------------------------
+cap_haz_headline <- paste0("Improvement of the rolling policy over greedy/myopic, ",
+                           HB, " vs. ", HA, " conversion risk.")
+cap_haz_value    <- paste0("Acquisition value (cumulative discounted duck-pairs secured relative to the ",
+                           "do-nothing baseline, 2020\u20132100), by policy, ", HB, " vs. ", HA, ".")
+cap_haz_overlap  <- paste0("Overlap of the EAUs acquired under ", HB, " and ", HA,
+                           " conversion risk, by scenario and policy.")
+cap_haz_risk_fig <- paste0("**Per-period conversion risk across EAUs, by decade and emissions scenario.** Grey = ",
+                           HB, "; red = ", HA, ". Box = median and IQR; diamond = mean; dash = maximum.")
+```
+
+```{r}
+#| label: haz-stale-note
+#| results: asis
+#| eval: !expr haz_stale
+cat("*(Warning: the canonical inputs panel has changed since the high-hazard panel was",
+    "built. Rebuild it with 14_build_hazard_panel.R and rerun its models before",
+    "relying on this section.)*")
+```
+
+In an effort to compare our model results to published literature which estimates the landscape-scale conversion rates of wetlands and grasslands, I re-ran the model with conversion risk rescaled to a high estimate of grassland conversion rates. Rashford et al. (2011) estimates that 1.33% of grasslands were lost across the PPR from 1979-1997, and is often cited as an upper bound on estimated cropland conversion rates. 1.33% per year translates to 12.5% per decade for our purposes. I re-scaled all conversion risk values so that the landscape-wide 2020 conversion rate — the share of all unprotected suitable habitat converted per decade — equals 12.5%, up from 1.7% in the original (FOREsce derived) run. The rescaling multiplies the underlying conversion rate by the same factor in every EAU, decade and scenario, so the spatial pattern and the trajectory of conversion risk over time (including the mid-century collapse under GCAM) are unchanged. Benefit, cost, budget and land cover are identical to the original run.
+
+We find that the overall pattern of rolling outperforms myopic which outperforms greedy still holds. The performance gap, however, narrows. Rather than ~70% improvement of rolling > myopic, for example, we see ~ 35-40% improvement. I think this is likely because in a very high risk environment, the selection of particular parcels matters less than any selection at all. 
+
+```{r}
+#| label: tbl-haz-headline
+#| tbl-cap: !expr cap_haz_headline
+#| eval: !expr haz_ok
+hd <- read_csv(file.path(OUT_DIR, "haz_headline.csv"), show_col_types = FALSE)
+df <- data.frame(Scenario = unname(SCEN_LAB1[hd$scenario]),
+                 rg_b = fmt_h1(hd$rg_pct_base), rg_a = fmt_h1(hd$rg_pct_alt), rg_d = fmt_hpp(hd$rg_pct_diff),
+                 rm_b = fmt_h1(hd$rm_pct_base), rm_a = fmt_h1(hd$rm_pct_alt), rm_d = fmt_hpp(hd$rm_pct_diff),
+                 ord  = ifelse(hd$ranking_holds, "Yes", "NO"), check.names = FALSE)
+flags <- c(lapply(which(abs(hd$rg_pct_diff) > HT), function(i) c(i, 4)),
+           lapply(which(abs(hd$rm_pct_diff) > HT), function(i) c(i, 7)),
+           lapply(which(df$ord == "NO"),           function(i) c(i, 8)))
+style_haz_table(df,
+  groups = c(rep("Rolling vs. Greedy", 3), rep("Rolling vs. Myopic", 3), "Ranking holds"),
+  subs   = c(HB, HA, paste0(DELTA, " pp"), HB, HA, paste0(DELTA, " pp"), "both runs"),
+  bold_cells = flags,
+  footer_text = c("% improvement = (rolling \u2212 comparison policy) as % of the comparison policy's value.",
+                  paste0(DELTA, " pp = ", HA, " \u2212 ", HB, ", in percentage points; red = larger than ", HT, " pp.")))
+```
+
+```{r}
+#| label: tbl-haz-value
+#| tbl-cap: !expr cap_haz_value
+#| eval: !expr haz_ok
+va <- read_csv(file.path(OUT_DIR, "haz_value_added.csv"), show_col_types = FALSE)
+df <- data.frame(Scenario = unname(SCEN_LAB1[va$scenario]),
+                 g_b = fmt_pairs(va$greedy_base),  g_a = fmt_pairs(va$greedy_alt),  g_r = fmt_hx(va$greedy_ratio),
+                 m_b = fmt_pairs(va$myopic_base),  m_a = fmt_pairs(va$myopic_alt),  m_r = fmt_hx(va$myopic_ratio),
+                 r_b = fmt_pairs(va$rolling_base), r_a = fmt_pairs(va$rolling_alt), r_r = fmt_hx(va$rolling_ratio),
+                 check.names = FALSE)
+style_haz_table(df,
+  groups = rep(c("Greedy", "Myopic", "Rolling"), each = 3),
+  subs = rep(c(HB, HA, "Ratio"), 3),
+  font_size = 7.5,
+  footer_text = paste0("Ratio = ", HA, " acquisition value / ", HB, " acquisition value."))
+```
+
+*[Commentary on acquisition value]*
+
+```{r}
+#| label: fig-haz-risk
+#| fig-cap: !expr cap_haz_risk_fig
+#| out-width: 100%
+#| eval: !expr haz_risk_ok
+knitr::include_graphics(file.path(OUT_DIR, "fig_haz_risk_box.png"))
+```
+
+{{< pagebreak >}}

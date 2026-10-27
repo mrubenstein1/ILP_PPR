@@ -606,6 +606,8 @@ if (DRAW_MAPS && file.exists(SCHEDULE)) {
 
 ## run metadata (results.qmd reads this to stamp the document) -------------------
 drew_maps <- DRAW_MAPS && file.exists(SCHEDULE)
+HAZARD_K <- if (HAZARD_RUN)   # high-hazard run: k solved by 14_build_hazard_panel.R
+  jsonlite::read_json(file.path(DIR_DERIVED, "hazard_scaling.json"))$k else 1
 jsonlite::write_json(
   list(generated      = format(Sys.time(), "%Y-%m-%dT%H:%M:%S"),
        generated_date = format(Sys.Date(), "%Y-%m-%d"),
@@ -613,10 +615,12 @@ jsonlite::write_json(
        run_id         = RUN_ID,
        derived_run_id = DERIVED_RUN_ID,
        budget_eaus_per_period = BUDGET_EAUS_PER_PERIOD,
+       hazard_target_annual_pct = HAZARD_TARGET_ANNUAL_PCT,
+       hazard_k       = HAZARD_K,
        lc_scenario    = LC_SCENARIO,
        lc_label       = LC_LABEL,
        r_version      = R.version.string),
-  file.path(OUT_DIR, "run_metadata.json"), auto_unbox = TRUE, pretty = TRUE)
+  file.path(OUT_DIR, "run_metadata.json"), auto_unbox = TRUE, pretty = TRUE, na = "null")
 
 message("\nDone. Wrote 2 tables + 2 figures",
         if (drew_maps) " + 2 maps" else "",

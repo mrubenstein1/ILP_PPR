@@ -64,6 +64,15 @@ if (RUN_ID != DERIVED_RUN_ID && any(scripts %in% upstream_scripts))
        "'. Run only from 08 onward, e.g.  PPR_BUDGET=",
        BUDGET_EAUS_PER_PERIOD, " Rscript 00_run_all.R 08", call. = FALSE)
 
+# A high-hazard run has its own derived_data/, so the check above does not catch
+# it. Its panel is a rescaled copy of the canonical one (14_build_hazard_panel.R);
+# rerunning 01-06 here would reprocess land cover into the wrong folder.
+if (HAZARD_RUN && any(scripts %in% upstream_scripts))
+  stop("High-hazard run '", RUN_ID, "' uses a rescaled copy of the canonical panel ",
+       "and must not rerun 01-06. Build the panel, then run from 08:\n",
+       "  PPR_HAZARD=", .hazard_env, " Rscript 14_build_hazard_panel.R\n",
+       "  PPR_HAZARD=", .hazard_env, " Rscript 00_run_all.R 08", call. = FALSE)
+
 missing <- scripts[!file.exists(scripts)]
 if (length(missing))
   stop("Missing script(s): ", paste(missing, collapse = ", "), call. = FALSE)

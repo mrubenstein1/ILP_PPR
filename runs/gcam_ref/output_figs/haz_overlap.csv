@@ -1,0 +1,16 @@
+scenario,model,n_base,n_alt,n_both,jaccard
+rcp45_wet,greedy,72,72,72,1
+rcp45_wet,myopic,66,66,54,0.6923076923076923
+rcp45_wet,rolling,65,69,59,0.7866666666666666
+rcp45_dry,greedy,71,71,71,1
+rcp45_dry,myopic,65,68,53,0.6625
+rcp45_dry,rolling,68,68,61,0.8133333333333334
+rcp85_wet,greedy,72,72,72,1
+rcp85_wet,myopic,67,67,53,0.654320987654321
+rcp85_wet,rolling,67,69,61,0.8133333333333334
+rcp85_dry,greedy,70,70,70,1
+rcp85_dry,myopic,64,65,50,0.6329113924050633
+rcp85_dry,rolling,68,68,64,0.8888888888888888
+stationary,greedy,71,71,71,1
+stationary,myopic,71,73,64,0.8
+stationary,rolling,73,73,73,1
