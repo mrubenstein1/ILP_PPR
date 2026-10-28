@@ -67,13 +67,15 @@ style_haz_table <- function(df, groups, subs, footer_text = NULL, bold_cells = N
                 padding.right = 3, part = "all")
   ft <- fontsize(ft, size = font_size, part = "all")
   ft <- autofit(ft)                      # header + body only: footer not added yet
+   wv <- dim(ft)$widths                                         # per-column widths (in)
+  ft <- width(ft, width = wv * min(1, TABLE_MAX_W / sum(wv)))  # shrink to fit the page
   if (!is.null(footer_text)) {
     ft <- add_footer_lines(ft, values = footer_text)
     ft <- fontsize(ft, size = 7.5, part = "footer")
     ft <- color(ft, color = "grey40", part = "footer")
     ft <- align(ft, align = "left", part = "footer")
   }
-  set_table_properties(ft, layout = "autofit")
+  set_table_properties(ft, layout = "fixed")
 }
 
 ## captions (edit here) ----------------------------------------------------------

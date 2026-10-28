@@ -3,7 +3,6 @@
  ONLY IF 10e_results_assets_hazard_sweep.R has been run (haz_sweep_metadata.json
  exists in the canonical run's output_figs). Do not render this file on its own:
  it uses objects defined in 11_results.qmd's setup chunk (OUT_DIR, GREEN_HEADER).
- Write the prose in the *[Commentary …]* placeholders.
 ═════════════════════════════════════════════════════════════════════════════ -->
 
 ### 10/26/2026: Conversion-hazard sweep
@@ -60,13 +59,15 @@ style_sweep_table <- function(df, groups, subs, footer_text = NULL,
                 padding.right = 3, part = "all")
   ft <- fontsize(ft, size = font_size, part = "all")
   ft <- autofit(ft)                      # header + body only: footer not added yet
+   wv <- dim(ft)$widths                                         # per-column widths (in)
+  ft <- width(ft, width = wv * min(1, TABLE_MAX_W / sum(wv)))  # shrink to fit the page
   if (!is.null(footer_text)) {
     ft <- add_footer_lines(ft, values = footer_text)
     ft <- fontsize(ft, size = 7.5, part = "footer")
     ft <- color(ft, color = "grey40", part = "footer")
     ft <- align(ft, align = "left", part = "footer")
   }
-  set_table_properties(ft, layout = "autofit")
+  set_table_properties(ft, layout = "fixed")
 }
 
 ## captions (edit here) ----------------------------------------------------------
@@ -76,8 +77,8 @@ cap_sw_pct   <- paste0("**Policy performance across conversion rates (% improvem
                        "Left: myopic vs. greedy (value of using conversion risk); middle: rolling ",
                        "vs. myopic (value of foresight); right: rolling vs. greedy (total). ",
                        "Each tick gives the annual rate and the estimate it stands for.")
-cap_sw_pairs <- paste0("**Policy performance across conversion rates (", "\u0394",
-                       "pairs).** Same comparisons as the previous figure, in discounted ",
+cap_sw_pairs <- paste0("Policy performance across conversion rates (", "$\\Delta$",
+                       "pairs). Same comparisons as the previous figure, in discounted ",
                        "duck-pairs rather than percent.")
 ```
 
@@ -90,11 +91,12 @@ cat("*(Warning: some sweep runs were built from an older canonical inputs panel.
     "on this section.)*")
 ```
 
-To trace how policy performance changes with the level of conversion pressure, I re-ran the model at a series of conversion rates between the canonical rate (`r sw_canon` per year, the landscape-wide 2020 rate in the GCAM land-cover projection) and the Rashford et al. (2011) rate of `r sw_max` per year, with intermediate rates taken from published estimates of wetland and grassland loss in the PPR (`r sw_n` runs in total). Each run rescales conversion risk exactly as in the high-hazard run (next entry), so only the level of conversion pressure changes (by a factor of up to `r sw_kmax`); the spatial pattern and trajectory of conversion risk, and benefit, cost, budget and land cover, are identical across runs.
+In an effort to compare our model results to published estimates of landscape-scale conversion rates for wetlands and grasslands, I re-ran the model with conversion risk rescaled to different conversion rates. The FORESce derived conversion risk data acts as a lower bound: the landscape average of suitable-to-unsuitable habitat transition is equivalent to a 0.17% annual rate in 2020. Other published estimates vary, ranging from 0.28% (Johnston et al 2013) to 1.33% (Rashford et al. 2011).
 
-To see which part of the rolling policy's advantage depends on the level of conversion pressure, the gap between rolling and greedy is split into two parts: myopic vs. greedy, the value of using conversion risk at all (risk frozen at current levels), and rolling vs. myopic, the value of foresight (knowing how risk and benefit change over time).
+I re-scaled all conversion risk values so that the landscape-wide 2020 conversion rate (i.e., the share of all unprotected suitable habitat converted per decade) equaled the target rate. I calculated a scaling factor, k, which would bring the landscape-scale conversion rate to the target (literature-derived) rate, then applied that scaling factor to the conversion risk table in every EAU in every decade. This approach multiplies the underlying conversion rate by the same factor in every EAU, decade and scenario, so the spatial pattern and the trajectory of conversion risk over time (including the mid-century collapse under GCAM) are unchanged. Benefit, cost, budget and land cover are identical to the original run.
 
-*[Commentary on the results]*
+
+We find that the overall pattern of rolling outperforms myopic which outperforms greedy still holds. The performance gap, however, narrows. Rather than ~50% improvement of rolling > myopic, for example, we see ~ 35-40% improvement. 
 
 ```{r}
 #| label: tbl-hsw
