@@ -5,6 +5,14 @@
 #
 # Tables are written as tidy CSVs of RAW NUMBERS; all formatting and the grouped-header
 # styling happen in results.qmd. Same approach with Figs/Maps
+#
+# After this run's own assets, three COMPARISON SECTIONS (formerly the separate
+# scripts 10b, 10c and 10d) run at the end of this file:
+#   land-cover comparison   this run vs the BAU land-cover run      (cmp_* files)
+#   budget sensitivity      the budget runs from 13_run_budget_sweep.R  (bud_* files)
+#   hazard sweep            the hazard runs from 15_run_hazard_sweep.R  (haz_sweep* files)
+# Each runs only in the canonical configuration and only when its input runs exist;
+# otherwise it is skipped with a message. See each section's own header.
 
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -626,3 +634,883 @@ message("\nDone. Wrote 2 tables + 2 figures",
         if (drew_maps) " + 2 maps" else "",
         if (drew_desc) " + 4 descriptive assets" else "",
         " + run_metadata.json to '", OUT_DIR, "/'.")
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# COMPARISON SECTIONS (formerly 10b, 10c, 10d)
+# ═══════════════════════════════════════════════════════════════════════════════
+# Each section below is the former stand-alone script, unchanged except that a
+# missing input or a non-canonical configuration skips the section (with a message)
+# instead of stopping. Real errors still stop. Each section runs in its own
+# environment: several of its settings and helpers share names with the ones above
+# (OUT_DIR, theme_ppr, CLIM, ...) but differ, so they must not overwrite each other.
+
+skip_section <- function(...)
+  stop(structure(class = c("section_skip", "error", "condition"),
+                 list(message = paste0(...), call = NULL)))
+
+run_section <- function(name, code) {
+  message("\n── ", name, " ", strrep("─", max(3, 66 - nchar(name))))
+  tryCatch(eval(substitute(code), envir = new.env(parent = globalenv())),
+           section_skip = function(e) message("Skipped ", name, ": ", conditionMessage(e)))
+  invisible(NULL)
+}
+
+run_section("Land-cover comparison", {
+# ═══════════════════════════════════════════════════════════════════════════════
+# SECTION: land-cover comparison (formerly 10b) — assets comparing two land-cover runs
+# ═══════════════════════════════════════════════════════════════════════════════
+# Compares this run (the BASE: RUN_ID in 00_config.R, normally "gcam_ref") with an
+# ALTERNATIVE land-cover run (COMPARE_RUN below, normally "bau"). Differences are
+# reported as alternative − base, with the same formulas as 12_compare_runs.qmd.
+#
+# PREREQUISITES — both complete pipeline runs must exist on disk:
+#   runs/<RUN_ID>/output_data, runs/<RUN_ID>/derived_data       (base)
+#   runs/<COMPARE_RUN>/output_data, runs/<COMPARE_RUN>/derived_data  (alternative)
+# Typical order: run the pipeline for the alternative scenario, then for the base
+# scenario; this section then runs at the end of the base run's script 10 (see README).
+#
+# Writes to the BASE run's output_figs (raw numbers; formatting lives in
+# 11_results.qmd):
+#   cmp_value_added.csv   acquisition value by policy, both runs, all scenarios
+#   cmp_headline.csv      % improvements for the climate scenarios + ranking check
+#   cmp_risk_table.csv    per-period risk summary by RCP x decade, both runs
+#   fig_cmp_risk_box      per-period risk, both runs side by side (PNG + PDF)
+#   cmp_metadata.json     run ids, labels, short names, threshold, epsilons
+# 11_results.qmd includes the comparison section only if cmp_metadata.json exists.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+if (!exists(".SETUP_DONE")) source("00_setup.R")
+
+# ── CONFIG ─────────────────────────────────────────────────────────────────────
+COMPARE_RUN   <- "bau"                               # RUN_ID of the alternative run
+CMP_SHORT     <- c(base = "GCAM ref", alt = "BAU")   # short names: table headers, legends
+CMP_RUN_COL   <- c(base = "#4D4D4D", alt = "#C0392B")
+CMP_THRESH_PP <- 2       # flag a headline gap that moves by more than this (pp)
+
+OUT_DIR     <- DIR_FIGS                                   # the base run's output_figs
+BASE_RES    <- file.path(DIR_OUT, "model_results.csv")
+BASE_PANEL  <- file.path(DIR_DERIVED, "data_panel.rds")
+ALT_RES     <- file.path("runs", COMPARE_RUN, "output_data", "model_results.csv")
+ALT_PANEL   <- file.path("runs", COMPARE_RUN, "derived_data", "data_panel.rds")
+ALT_META    <- file.path("runs", COMPARE_RUN, "output_figs", "run_metadata.json")
+
+DPI         <- 300
+BASE_SIZE   <- 12
+BASE_FAMILY <- "serif"          # same as 10_results_assets.R
+SAVE_PDF    <- TRUE
+# ────────────────────────────────────────────────────────────────────────────────
+
+if (HAZARD_RUN || BUDGET_SWEEP)
+  skip_section("runs only in the canonical configuration (PPR_HAZARD and PPR_BUDGET unset).")
+if (COMPARE_RUN == RUN_ID)
+  skip_section("this run is the comparison run (COMPARE_RUN = '", COMPARE_RUN, "').")
+for (f in c(BASE_RES, ALT_RES))
+  if (!file.exists(f))
+    skip_section("missing '", f, "'. Both land-cover runs must be complete ",
+                 "(see the header of this section).")
+if (!dir.exists(OUT_DIR)) dir.create(OUT_DIR, recursive = TRUE)
+
+## packages ---------------------------------------------------------------------
+suppressPackageStartupMessages({
+  library(readr); library(dplyr); library(tidyr); library(ggplot2); library(scales)
+})
+
+## labels, helpers (same definitions as 10_results_assets.R) --------------------
+SCEN_LEVELS <- c("rcp45_wet", "rcp45_dry", "rcp85_wet", "rcp85_dry", "stationary")
+CLIM <- SCEN_LEVELS[1:4]
+pct_improve <- function(roll, base) ifelse(abs(base) < 1e-9, NA_real_, 100 * (roll - base) / base)
+
+theme_ppr <- function(base_size = BASE_SIZE, base_family = BASE_FAMILY) {
+  theme_minimal(base_size = base_size, base_family = base_family) %+replace%
+    theme(
+      axis.title    = element_text(colour = "grey25"),
+      axis.title.y  = element_text(angle = 90, margin = margin(r = 6)),
+      panel.grid.minor   = element_blank(),
+      panel.grid.major.x = element_blank(),
+      legend.position = "top", legend.justification = "right",
+      legend.title = element_blank(),
+      strip.text = element_text(face = "bold", hjust = 0, size = rel(0.95)),
+      plot.background = element_rect(fill = "white", colour = NA),
+      plot.margin = margin(10, 14, 8, 10)
+    )
+}
+theme_set(theme_ppr())
+
+save_fig <- function(p, name, w, h) {
+  ggsave(file.path(OUT_DIR, paste0(name, ".png")), p, width = w, height = h, dpi = DPI, bg = "white")
+  if (SAVE_PDF) {
+    ok <- tryCatch(
+      { ggsave(file.path(OUT_DIR, paste0(name, ".pdf")), p, width = w, height = h,
+               device = cairo_pdf, bg = "white"); TRUE },
+      warning = function(w) FALSE,
+      error   = function(e) FALSE)
+    if (!ok)
+      suppressWarnings(ggsave(file.path(OUT_DIR, paste0(name, ".pdf")), p,
+                              width = w, height = h, bg = "white"))
+  }
+  invisible(p)
+}
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# MODEL RESULTS  —  improvement of rolling over greedy and myopic, both runs
+# ═══════════════════════════════════════════════════════════════════════════════
+summ_cmp <- function(r) {
+  r %>% mutate(scenario = as.character(scenario)) %>%
+    select(scenario, model, value_added) %>%
+    pivot_wider(names_from = model, values_from = value_added) %>%
+    transmute(scenario,
+              rg_dpairs = rolling - greedy,
+              rm_dpairs = rolling - myopic,
+              # "<1 pair" differences (stationary) are not meaningful as %
+              rg_pct = ifelse(abs(rg_dpairs) < 1, NA_real_, pct_improve(rolling, greedy)),
+              rm_pct = ifelse(abs(rm_dpairs) < 1, NA_real_, pct_improve(rolling, myopic)),
+              order_ok = rolling >= myopic - 1e-6 & myopic >= greedy - 1e-6)
+}
+cmp <- inner_join(summ_cmp(read_csv(BASE_RES, show_col_types = FALSE)),
+                  summ_cmp(read_csv(ALT_RES,  show_col_types = FALSE)),
+                  by = "scenario", suffix = c("_base", "_alt")) %>%
+  mutate(scenario = factor(scenario, levels = SCEN_LEVELS)) %>%
+  arrange(scenario)
+
+tbl_cmp_improvement <- cmp %>%
+  transmute(scenario,
+            rg_dpairs_base, rg_dpairs_alt, rg_pct_base, rg_pct_alt,
+            rg_pct_diff = rg_pct_alt - rg_pct_base,
+            rm_dpairs_base, rm_dpairs_alt, rm_pct_base, rm_pct_alt,
+            rm_pct_diff = rm_pct_alt - rm_pct_base)
+
+## acquisition value (value added over the do-nothing baseline) by policy, both runs
+va_of <- function(f) read_csv(f, show_col_types = FALSE) %>%
+  mutate(scenario = as.character(scenario)) %>%
+  select(scenario, model, value_added) %>%
+  pivot_wider(names_from = model, values_from = value_added)
+rel_chg <- function(a, b) ifelse(abs(b) < 1, NA_real_, 100 * (a - b) / b)  # % change, alt vs base
+tbl_cmp_value <- inner_join(va_of(BASE_RES), va_of(ALT_RES), by = "scenario",
+                            suffix = c("_base", "_alt")) %>%
+  mutate(scenario = factor(scenario, levels = SCEN_LEVELS)) %>%
+  arrange(scenario) %>%
+  transmute(scenario,
+            greedy_base,  greedy_alt,  greedy_pct_chg  = rel_chg(greedy_alt,  greedy_base),
+            myopic_base,  myopic_alt,  myopic_pct_chg  = rel_chg(myopic_alt,  myopic_base),
+            rolling_base, rolling_alt, rolling_pct_chg = rel_chg(rolling_alt, rolling_base))
+write_csv(tbl_cmp_value, file.path(OUT_DIR, "cmp_value_added.csv"))
+
+tbl_cmp_headline <- tbl_cmp_improvement %>%
+  filter(scenario %in% CLIM) %>%
+  left_join(cmp %>% select(scenario, order_ok_base, order_ok_alt), by = "scenario") %>%
+  transmute(scenario, rg_pct_base, rg_pct_alt, rg_pct_diff,
+            rm_pct_base, rm_pct_alt, rm_pct_diff,
+            ranking_holds = order_ok_base & order_ok_alt)
+write_csv(tbl_cmp_headline, file.path(OUT_DIR, "cmp_headline.csv"))
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# CONVERSION RISK  —  as Fig. 3 of the main results (RCP 4.5/8.5, 2100 excluded)
+# ═══════════════════════════════════════════════════════════════════════════════
+risk_of <- function(pnl) {
+  sv  <- pnl %>% filter(rcp == "stationary", year < 2100) %>% pull(trans_prob)
+  eps <- min(sv[sv > 0])           # smallest POSITIVE value (structural zeros excluded)
+  r <- pnl %>% distinct(eau_id, year, rcp, value = trans_prob) %>%
+    filter(year < 2100, rcp %in% c("45", "85")) %>%
+    mutate(rcp_lab = factor(recode(rcp, `45` = "RCP 4.5", `85` = "RCP 8.5"),
+                            levels = c("RCP 4.5", "RCP 8.5")),
+           at_floor = value <= eps * 1.000001,
+           pct      = value * 100)
+  list(r = r, eps = eps)
+}
+
+eps_base <- NA_real_; eps_alt <- NA_real_; drew_risk <- FALSE
+if (file.exists(BASE_PANEL) && file.exists(ALT_PANEL)) {
+  rb <- risk_of(readRDS(BASE_PANEL)); ra <- risk_of(readRDS(ALT_PANEL))
+  eps_base <- rb$eps; eps_alt <- ra$eps
+  rk <- bind_rows(rb$r %>% mutate(run = "base"), ra$r %>% mutate(run = "alt")) %>%
+    mutate(run = factor(run, levels = c("base", "alt")))
+
+  tbl_cmp_risk <- rk %>%
+    group_by(rcp_lab, year, run) %>%
+    summarise(mean = mean(pct), median = median(pct), max = max(pct),
+              pct_floor = 100 * mean(at_floor), .groups = "drop") %>%
+    pivot_wider(names_from = run, values_from = c(mean, median, max, pct_floor)) %>%
+    arrange(rcp_lab, year) %>%
+    mutate(rcp_lab = as.character(rcp_lab))
+  write_csv(tbl_cmp_risk, file.path(OUT_DIR, "cmp_risk_table.csv"))
+
+  ## figure: boxes dodged by run; diamond = mean, dash = maximum
+  dg <- position_dodge(width = .75)
+  fig_cmp_risk_box <- ggplot(rk, aes(factor(year), pct, fill = run, colour = run)) +
+    geom_boxplot(aes(group = interaction(year, run)), outlier.shape = NA,
+                 position = dg, width = .62, alpha = .35, linewidth = .3) +
+    stat_summary(aes(group = run), fun = max, geom = "point", shape = 95, size = 6,
+                 position = dg, show.legend = FALSE) +
+    stat_summary(aes(group = run), fun = mean, geom = "point", shape = 23, size = 1.6,
+                 fill = "white", position = dg, show.legend = FALSE) +
+    facet_wrap(~ rcp_lab, ncol = 2) +
+    scale_fill_manual(values = CMP_RUN_COL, labels = CMP_SHORT) +
+    scale_colour_manual(values = CMP_RUN_COL, labels = CMP_SHORT) +
+    scale_y_continuous("Per-period conversion risk",
+                       labels = label_number(suffix = "%", accuracy = .1),
+                       expand = expansion(mult = c(.02, .06))) +
+    scale_x_discrete("year") +
+    labs(caption = "Box = median and interquartile range; diamond = mean; dash = maximum.") +
+    theme(panel.grid.major.x = element_blank(),
+          axis.text.x = element_text(angle = 90, vjust = .5, size = rel(.8)),
+          plot.caption = element_text(colour = "grey40", size = rel(.72), hjust = 0))
+  save_fig(fig_cmp_risk_box, "fig_cmp_risk_box", 11, 5.0)
+  drew_risk <- TRUE
+} else {
+  message("Risk figure/table skipped: inputs panel missing ('", BASE_PANEL,
+          "' or '", ALT_PANEL, "'). Rerun that pipeline through script 06.")
+}
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# METADATA  —  11_results.qmd includes the comparison section only if this exists
+# ═══════════════════════════════════════════════════════════════════════════════
+alt_meta <- tryCatch(jsonlite::read_json(ALT_META, simplifyVector = TRUE),
+                     error = function(e) NULL)
+jsonlite::write_json(
+  list(generated_date = format(Sys.Date(), "%Y-%m-%d"),
+       base_run = RUN_ID, base_label = LC_LABEL, base_short = CMP_SHORT[["base"]],
+       alt_run = COMPARE_RUN,
+       alt_label = if (!is.null(alt_meta$lc_label)) alt_meta$lc_label else COMPARE_RUN,
+       alt_short = CMP_SHORT[["alt"]],
+       alt_generated_date = if (!is.null(alt_meta$generated_date)) alt_meta$generated_date else NA,
+       thresh_pp = CMP_THRESH_PP, eps_base = eps_base, eps_alt = eps_alt,
+       risk_drawn = drew_risk),
+  file.path(OUT_DIR, "cmp_metadata.json"), auto_unbox = TRUE, pretty = TRUE, na = "null")
+
+message("\nDone. Comparison of '", RUN_ID, "' (base) with '", COMPARE_RUN, "' written to '",
+        OUT_DIR, "/': 2 tables", if (drew_risk) " + risk table + risk figure" else "",
+        " + cmp_metadata.json.")
+})
+
+run_section("Budget sensitivity", {
+# ═══════════════════════════════════════════════════════════════════════════════
+# SECTION: budget sensitivity (formerly 10c) — assets comparing budget-sensitivity runs
+# ═══════════════════════════════════════════════════════════════════════════════
+# Compares the budget runs made by 13_run_budget_sweep.R: every complete folder
+# runs/<LC_SCENARIO>_bXX/ (e.g. gcam_ref_b02, gcam_ref_b05, gcam_ref_b10). The budget
+# of each run is read from its own model_results.rds (params$budget_eaus_per_period),
+# not from the folder name. Formulas are the same as in 10_results_assets.R.
+#
+# PREREQUISITES:
+#   - the canonical run, runs/<LC_SCENARIO>/ (Rscript 00_run_all.R, PPR_BUDGET unset)
+#   - at least two complete budget runs (Rscript 13_run_budget_sweep.R)
+# Runs as part of script 10 in the canonical configuration (PPR_BUDGET unset):
+#   Rscript 10_results_assets.R
+#
+# Writes to the CANONICAL run's output_figs (raw numbers; formatting lives in the
+# budget-comparison .qmd), all prefixed bud_:
+#   bud_value_added.csv     value added, % over baseline, EAUs and hectares bought,
+#                           by budget x scenario x policy
+#   bud_headline.csv        Tables 1-2 by budget: rolling vs greedy/myopic in pairs,
+#                           % improvement and % shortfall, + ranking check
+#   bud_convergence.csv     solver convergence by budget x scenario x policy
+#   fig_bud_improvement     % improvement of rolling vs budget (PNG + PDF)
+#   fig_bud_value_added     acquisition value vs budget, by policy (PNG + PDF)
+#   fig_bud_overtime        Figure 5 by budget: cumulative gap vs rolling (PNG + PDF)
+#   map_bud_foresight       Figure 6 by budget: rolling vs myopic acquisition sets
+#   bud_metadata.json       runs, budgets, check of the canonical-budget run
+# No dollar amounts are written (total_spend is deliberately not carried over).
+# ═══════════════════════════════════════════════════════════════════════════════
+
+if (!exists(".SETUP_DONE")) source("00_setup.R")
+source("00_config.R")   # always re-read: a long-lived R session can hold an older config
+if (HAZARD_RUN || BUDGET_SWEEP)
+  skip_section("runs only in the canonical configuration (PPR_HAZARD and PPR_BUDGET unset).")
+
+# ── CONFIG ─────────────────────────────────────────────────────────────────────
+SWEEP_PATTERN <- paste0("^", LC_SCENARIO, "_b[0-9]+(p[0-9]+)?$")   # budget run folders
+OUT_DIR       <- DIR_FIGS                                         # canonical output_figs
+CANON_RES     <- file.path(DIR_OUT, "model_results.csv")          # canonical results
+EAU_LOOKUP    <- file.path(DIR_COMMON, "eau_wmd_lookup.rds")
+
+DPI         <- 300
+BASE_SIZE   <- 12
+BASE_FAMILY <- "serif"          # same as 10_results_assets.R
+SAVE_PDF    <- TRUE
+DRAW_MAPS   <- TRUE             # FALSE skips map_bud_foresight
+
+# palettes and map settings: same as 10_results_assets.R
+COL_MODEL <- c(greedy = "#B0413E", myopic = "#E2A23B", rolling = "#2E7D5B")
+SCEN_COL  <- c(rcp45_wet = "#3F7FA6", rcp45_dry = "#9BB7C4",
+               rcp85_wet = "#9C3848", rcp85_dry = "#D79A86", stationary = "#777777")
+CELL_W       <- 18513.54        # EAU width  (x resolution), metres
+CELL_H       <- 18485.21        # EAU height (y resolution), metres
+EAU_AREA_HA  <- CELL_W * CELL_H / 1e4
+MAP_BG       <- "grey91"
+WMD_OVERLAY  <- TRUE
+WMD_RASTER   <- file.path(DIR_COMMON, "wmd_raster_equal_area.tif")
+WMD_LINE_COL <- "grey25"
+WMD_LINE_W   <- 0.25
+PAIR_COL <- c("Acquired by both"               = "#5E4FA2",
+              "Rolling only (foresight adds)"  = "#2C7FB8",
+              "Myopic only (foresight avoids)" = "#E6892B",
+              "Neither"                        = MAP_BG)
+# ────────────────────────────────────────────────────────────────────────────────
+
+suppressPackageStartupMessages({
+  library(readr); library(dplyr); library(tidyr); library(ggplot2); library(scales)
+})
+if (!dir.exists(OUT_DIR)) dir.create(OUT_DIR, recursive = TRUE)
+
+## labels, helpers (same definitions as 10_results_assets.R) --------------------
+SCEN_LEVELS <- c("rcp45_wet", "rcp45_dry", "rcp85_wet", "rcp85_dry", "stationary")
+SCEN_LAB1   <- c(rcp45_wet = "RCP 4.5 wet", rcp45_dry = "RCP 4.5 dry",
+                 rcp85_wet = "RCP 8.5 wet", rcp85_dry = "RCP 8.5 dry",
+                 stationary = "Stationary")
+CLIM <- SCEN_LEVELS[1:4]
+pct_improve <- function(roll, base) ifelse(abs(base) < 1e-9, NA_real_, 100 * (roll - base) / base)
+pct_short   <- function(roll, base) ifelse(abs(roll) < 1e-9, NA_real_, 100 * (roll - base) / roll)
+fmt_pairs   <- function(x) ifelse(abs(x) < 1, "<1", formatC(round(x), format = "d", big.mark = ","))
+bud_lab     <- function(b) paste0(format(b), " EAUs / period")
+
+theme_ppr <- function(base_size = BASE_SIZE, base_family = BASE_FAMILY) {
+  theme_minimal(base_size = base_size, base_family = base_family) %+replace%
+    theme(
+      axis.title    = element_text(colour = "grey25"),
+      axis.title.y  = element_text(angle = 90, margin = margin(r = 6)),
+      panel.grid.minor   = element_blank(),
+      panel.grid.major.x = element_blank(),
+      legend.position = "top", legend.justification = "right",
+      legend.title = element_blank(),
+      strip.text = element_text(face = "bold", hjust = 0, size = rel(0.95),
+                                margin = margin(2, 0, 4, 0)),   # stops descenders clipping
+      plot.background = element_rect(fill = "white", colour = NA),
+      plot.margin = margin(10, 14, 8, 10)
+    )
+}
+theme_set(theme_ppr())
+ggplot2::update_geom_defaults("text", list(family = BASE_FAMILY))
+
+save_fig <- function(p, name, w, h) {
+  ggsave(file.path(OUT_DIR, paste0(name, ".png")), p, width = w, height = h, dpi = DPI, bg = "white")
+  if (SAVE_PDF) {
+    ok <- tryCatch(
+      { ggsave(file.path(OUT_DIR, paste0(name, ".pdf")), p, width = w, height = h,
+               device = cairo_pdf, bg = "white"); TRUE },
+      warning = function(w) FALSE,
+      error   = function(e) FALSE)
+    if (!ok)
+      suppressWarnings(ggsave(file.path(OUT_DIR, paste0(name, ".pdf")), p,
+                              width = w, height = h, bg = "white"))
+  }
+  invisible(p)
+}
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# FIND THE BUDGET RUNS
+# ═══════════════════════════════════════════════════════════════════════════════
+cand <- grep(SWEEP_PATTERN, list.dirs("runs", recursive = FALSE, full.names = FALSE),
+             value = TRUE)
+runs <- bind_rows(lapply(cand, function(id) {
+  od  <- file.path("runs", id, "output_data")
+  rds <- file.path(od, "model_results.rds")
+  if (!file.exists(rds) || !file.exists(file.path(od, "model_results.csv"))) {
+    message("Skipping ", id, ": no complete model results.")
+    return(NULL)
+  }
+  b <- readRDS(rds)$params$budget_eaus_per_period
+  if (is.null(b)) { message("Skipping ", id, ": budget not recorded in params."); return(NULL) }
+  data.frame(run_id = id, budget = as.numeric(b), dir = od, stringsAsFactors = FALSE)
+}))
+if (nrow(runs) < 2)
+  skip_section("found ", nrow(runs), " complete budget run(s) matching runs/", LC_SCENARIO,
+               "_bXX. Run 13_run_budget_sweep.R first.")
+if (anyDuplicated(runs$budget))
+  stop("Two runs share a budget: ", paste(runs$run_id[duplicated(runs$budget) |
+       duplicated(runs$budget, fromLast = TRUE)], collapse = ", "), call. = FALSE)
+runs <- arrange(runs, budget)
+BUD_LEVELS <- bud_lab(runs$budget)
+message("Budget runs: ", paste0(runs$run_id, " (", runs$budget, ")", collapse = ", "))
+
+read_runs <- function(file) bind_rows(lapply(seq_len(nrow(runs)), function(k) {
+  p <- file.path(runs$dir[k], file)
+  if (!file.exists(p)) { message("  (", runs$run_id[k], ": no ", file, ")"); return(NULL) }
+  read_csv(p, show_col_types = FALSE) %>%
+    mutate(budget = runs$budget[k], run_id = runs$run_id[k], .before = 1)
+}))
+res  <- read_runs("model_results.csv")
+trj  <- read_runs("model_trajectories.csv")
+conv <- read_runs("solver_convergence.csv")
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# TABLES — tidy CSVs of RAW NUMBERS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# value added, % over baseline, acquisitions -- long, one row per budget x scenario x policy
+tbl_value <- res %>%
+  transmute(budget, scenario = factor(scenario, levels = SCEN_LEVELS), model,
+            value_added,
+            pct_over_baseline = 100 * value_added / J_baseline,
+            va_per_budget_unit = value_added / budget,   # pairs per median-EAU of budget
+            n_acquired,
+            hectares = n_acquired * EAU_AREA_HA) %>%
+  arrange(budget, scenario, model)
+write_csv(tbl_value, file.path(OUT_DIR, "bud_value_added.csv"))
+
+# Tables 1-2 by budget ("<1 pair" differences are not meaningful as %)
+tbl_headline <- res %>%
+  select(budget, scenario, model, value_added) %>%
+  pivot_wider(names_from = model, values_from = value_added) %>%
+  transmute(budget, scenario = factor(scenario, levels = SCEN_LEVELS),
+            greedy_va = greedy, myopic_va = myopic, rolling_va = rolling,
+            rg_dpairs = rolling - greedy, rm_dpairs = rolling - myopic,
+            rg_pct       = ifelse(abs(rg_dpairs) < 1, NA_real_, pct_improve(rolling, greedy)),
+            rm_pct       = ifelse(abs(rm_dpairs) < 1, NA_real_, pct_improve(rolling, myopic)),
+            rg_short_pct = ifelse(abs(rg_dpairs) < 1, NA_real_, pct_short(rolling, greedy)),
+            rm_short_pct = ifelse(abs(rm_dpairs) < 1, NA_real_, pct_short(rolling, myopic)),
+            ranking_holds = rolling >= myopic - 1e-6 & myopic >= greedy - 1e-6) %>%
+  arrange(budget, scenario)
+write_csv(tbl_headline, file.path(OUT_DIR, "bud_headline.csv"))
+
+# solver convergence (tag = "<scenario>/<model>"; greedy uses no solver)
+if (!is.null(conv) && nrow(conv)) {
+  tbl_conv <- conv %>%
+    separate(tag, into = c("scenario", "model"), sep = "/", remove = TRUE) %>%
+    select(budget, scenario, model, n_solves, n_hit_timelimit, worst_gap_pct) %>%
+    mutate(scenario = factor(scenario, levels = SCEN_LEVELS)) %>%
+    arrange(budget, scenario, model)
+  write_csv(tbl_conv, file.path(OUT_DIR, "bud_convergence.csv"))
+}
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# FIGURE — % improvement of rolling vs budget (climate scenarios)
+# ═══════════════════════════════════════════════════════════════════════════════
+d_imp <- tbl_headline %>%
+  filter(scenario %in% CLIM) %>%
+  select(budget, scenario, rg_pct, rm_pct) %>%
+  pivot_longer(c(rg_pct, rm_pct), names_to = "cmp", values_to = "pct") %>%
+  mutate(cmp = factor(cmp, levels = c("rg_pct", "rm_pct"),
+                      labels = c("Rolling vs. greedy", "Rolling vs. myopic")),
+         scenario = factor(scenario, levels = CLIM))
+fig_imp <- ggplot(d_imp, aes(budget, pct, colour = scenario)) +
+  geom_line(linewidth = 0.9) + geom_point(size = 2) +
+  facet_wrap(~ cmp, nrow = 1) +
+  scale_colour_manual(values = SCEN_COL, labels = SCEN_LAB1) +
+  scale_x_continuous("Budget (median-priced EAUs per period)", breaks = runs$budget) +
+  scale_y_continuous("% improvement of rolling", labels = function(x) paste0(x, "%"),
+                     limits = c(0, NA), expand = expansion(mult = c(0, 0.08))) +
+  theme(panel.grid.major.x = element_line(colour = "grey92"))
+save_fig(fig_imp, "fig_bud_improvement", 10, 4.8)
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# FIGURE — acquisition value vs budget, by policy (climate scenarios)
+# ═══════════════════════════════════════════════════════════════════════════════
+d_va <- tbl_value %>%
+  filter(scenario %in% CLIM) %>%
+  mutate(model = factor(model, levels = c("rolling", "myopic", "greedy")),
+         scenario = factor(scenario, levels = CLIM))
+fig_va <- ggplot(d_va, aes(budget, value_added, colour = model)) +
+  geom_line(linewidth = 0.9) + geom_point(size = 2) +
+  facet_wrap(~ scenario, ncol = 2, labeller = as_labeller(SCEN_LAB1)) +
+  scale_colour_manual(values = COL_MODEL, breaks = c("rolling", "myopic", "greedy"),
+                      labels = c("Rolling", "Myopic", "Greedy")) +
+  scale_x_continuous("Budget (median-priced EAUs per period)", breaks = runs$budget) +
+  scale_y_continuous("Acquisition value\n(discounted duck-pairs over do-nothing)",
+                     labels = label_comma(), limits = c(0, NA),
+                     expand = expansion(mult = c(0, 0.05))) +
+  theme(panel.grid.major.x = element_line(colour = "grey92"))
+save_fig(fig_va, "fig_bud_value_added", 10, 7.4)
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# FIGURE (Figure 5 by budget) — cumulative performance relative to rolling
+# Rows = climate scenario, columns = budget. Same calculation as overtime_gap in 10.
+# ═══════════════════════════════════════════════════════════════════════════════
+roll_disc <- trj %>% filter(model == "rolling") %>%
+  select(budget, scenario, year, roll = discounted)
+cumg <- trj %>%
+  filter(model %in% c("greedy", "myopic", "rolling"), scenario %in% CLIM) %>%
+  left_join(roll_disc, by = c("budget", "scenario", "year")) %>%
+  arrange(budget, scenario, model, year) %>%
+  group_by(budget, scenario, model) %>%
+  mutate(cum_gap = cumsum(discounted - roll)) %>%     # rolling: exactly 0
+  ungroup() %>%
+  mutate(model    = factor(model, levels = c("rolling", "myopic", "greedy")),
+         scenario = factor(scenario, levels = CLIM),
+         bud      = factor(bud_lab(budget), levels = BUD_LEVELS))
+ends <- cumg %>% filter(model != "rolling") %>%
+  group_by(budget, scenario, model) %>% filter(year == max(year)) %>% ungroup()
+
+fig_overtime <- ggplot(cumg, aes(year, cum_gap, colour = model)) +
+  geom_line(linewidth = 0.8) + geom_point(size = 1.2) +
+  geom_text(data = ends, aes(label = fmt_pairs(cum_gap)), hjust = -0.12, size = 2.5,
+            show.legend = FALSE) +
+  facet_grid(scenario ~ bud, labeller = labeller(scenario = SCEN_LAB1)) +
+  scale_colour_manual(values = COL_MODEL, breaks = c("rolling", "myopic", "greedy"),
+                      labels = c("Rolling (benchmark)", "Myopic", "Greedy")) +
+  scale_x_continuous("year", breaks = seq(2020, 2100, 40),
+                     expand = expansion(mult = c(0.02, 0.30))) +
+  scale_y_continuous("Cumulative difference vs. rolling\n(discounted duck-pairs)",
+                     labels = label_comma()) +
+  theme(panel.grid.major.x = element_line(colour = "grey92"),
+        strip.text.y = element_text(face = "bold", angle = -90, size = rel(0.9)))
+save_fig(fig_overtime, "fig_bud_overtime", 11, 11)
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# MAP (Figure 6 by budget) — rolling vs myopic acquisition sets
+# Rows = climate scenario, columns = budget. Same classification as 10.
+# ═══════════════════════════════════════════════════════════════════════════════
+drew_maps <- FALSE
+if (DRAW_MAPS) {
+  sched <- read_runs("acquisition_schedule_spatial.csv")
+  if (is.null(sched) || !nrow(sched) || all(is.na(sched$x_coord))) {
+    message("No mappable schedules found; skipping map_bud_foresight.")
+  } else {
+    ## WMD outlines (same approach as 10_results_assets.R) ----------------------
+    eau_xy <- if (file.exists(EAU_LOOKUP))
+      readRDS(EAU_LOOKUP)[, c("eau_id", "x_coord", "y_coord")] else NULL
+    wmd_sf <- NULL; map_crs <- NULL
+    if (WMD_OVERLAY && file.exists(WMD_RASTER) &&
+        requireNamespace("terra", quietly = TRUE) && requireNamespace("sf", quietly = TRUE)) {
+      tryCatch({
+        r     <- terra::rast(WMD_RASTER)
+        polys <- terra::as.polygons(r, dissolve = TRUE)
+        if (!is.null(eau_xy)) {
+          active <- terra::extract(r, as.matrix(eau_xy[, c("x_coord", "y_coord")]))[, 1]
+          active <- sort(unique(active[!is.na(active)]))
+          # as.data.frame(...)[[1]] gives a plain vector in every terra version;
+          # polys[[name]] returns a one-column data.frame in recent terra, which
+          # makes %in% FALSE for every polygon and silently drops all outlines.
+          polys  <- polys[as.data.frame(polys)[[1]] %in% active, ]
+        }
+        wmd_sf  <- sf::st_as_sf(polys)
+        map_crs <- sf::st_crs(wmd_sf)
+      }, error = function(e) {
+        message("WMD overlay skipped: ", conditionMessage(e))
+        wmd_sf <<- NULL; map_crs <<- NULL
+      })
+    }
+
+    ## classify each EAU, per budget x scenario ---------------------------------
+    land <- sched %>% distinct(eau_id, x_coord, y_coord)
+    acq  <- sched %>% filter(!is.na(acquired_year), model %in% c("rolling", "myopic"),
+                             scenario %in% CLIM) %>%
+      distinct(budget, scenario, model, eau_id) %>%
+      mutate(flag = TRUE) %>%
+      pivot_wider(names_from = model, values_from = flag)
+    if (!"rolling" %in% names(acq)) acq$rolling <- NA
+    if (!"myopic"  %in% names(acq)) acq$myopic  <- NA
+    md <- tidyr::expand_grid(budget = runs$budget, scenario = CLIM, land) %>%
+      left_join(acq, by = c("budget", "scenario", "eau_id")) %>%
+      mutate(r = coalesce(rolling, FALSE), m = coalesce(myopic, FALSE),
+             cat = factor(case_when(r & m ~ "Acquired by both",
+                                    r     ~ "Rolling only (foresight adds)",
+                                    m     ~ "Myopic only (foresight avoids)",
+                                    TRUE  ~ "Neither"), levels = names(PAIR_COL)),
+             scenario = factor(scenario, levels = CLIM),
+             bud = factor(bud_lab(budget), levels = BUD_LEVELS)) %>%
+      arrange(budget, scenario, cat != "Neither")     # coloured cells drawn on top
+
+    mp <- ggplot(md, aes(x_coord, y_coord, fill = cat)) +
+      geom_tile(width = CELL_W, height = CELL_H) +
+      scale_fill_manual(values = PAIR_COL, name = NULL, drop = FALSE) +
+      facet_grid(scenario ~ bud, labeller = labeller(scenario = SCEN_LAB1)) +
+      guides(fill = guide_legend(nrow = 1, override.aes = list(colour = NA)))
+    mp <- if (!is.null(wmd_sf)) {
+      mp + geom_sf(data = wmd_sf, fill = NA, colour = WMD_LINE_COL,
+                   linewidth = WMD_LINE_W, inherit.aes = FALSE) +
+        coord_sf(crs = map_crs, datum = NA, expand = FALSE)
+    } else mp + coord_equal()
+    mp <- mp + theme_void(base_size = BASE_SIZE, base_family = BASE_FAMILY) +
+      theme(strip.text      = element_text(face = "bold", size = rel(0.95),
+                                           margin = margin(2, 2, 4, 2)),
+            strip.text.y    = element_text(face = "bold", angle = -90, size = rel(0.95)),
+            legend.position = "bottom", panel.spacing = unit(4, "pt"),
+            plot.background = element_rect(fill = "white", colour = NA))
+    save_fig(mp, "map_bud_foresight", 10, 12.5)
+    drew_maps <- TRUE
+  }
+}
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# CHECK — the run at the canonical budget should reproduce the canonical run
+# ═══════════════════════════════════════════════════════════════════════════════
+canon_check <- NULL
+if (BUDGET_CANONICAL %in% runs$budget && file.exists(CANON_RES)) {
+  cid <- runs$run_id[runs$budget == BUDGET_CANONICAL]
+  cc <- inner_join(
+    read_csv(CANON_RES, show_col_types = FALSE) %>% select(scenario, model, va_c = value_added),
+    res %>% filter(budget == BUDGET_CANONICAL) %>% select(scenario, model, va_b = value_added),
+    by = c("scenario", "model")) %>%
+    filter(scenario %in% CLIM) %>%
+    mutate(diff_pct = 100 * (va_b - va_c) / va_c)
+  canon_check <- list(run_id = cid, canonical_run_id = RUN_ID,
+                      max_abs_diff_pct = max(abs(cc$diff_pct)),
+                      identical = all(cc$va_b == cc$va_c))
+  message("Canonical-budget check: ", cid, " vs ", RUN_ID, " | max |diff| = ",
+          signif(canon_check$max_abs_diff_pct, 3), "% of value added",
+          if (canon_check$identical) " (identical)" else "")
+}
+
+## metadata (the budget-comparison .qmd reads this) ------------------------------
+jsonlite::write_json(
+  list(generated_date    = format(Sys.Date(), "%Y-%m-%d"),
+       base_run_id       = RUN_ID,
+       lc_label          = LC_LABEL,
+       canonical_budget  = BUDGET_CANONICAL,
+       budgets           = runs$budget,
+       run_ids           = runs$run_id,
+       eau_area_ha       = EAU_AREA_HA,
+       maps_drawn        = drew_maps,
+       canon_check       = canon_check,
+       r_version         = R.version.string),
+  file.path(OUT_DIR, "bud_metadata.json"), auto_unbox = TRUE, pretty = TRUE, digits = NA)
+
+message("\nDone. Wrote 3 tables + 3 figures", if (drew_maps) " + 1 map" else "",
+        " + bud_metadata.json to '", OUT_DIR, "/'.")
+})
+
+run_section("Hazard sweep", {
+# ═══════════════════════════════════════════════════════════════════════════════
+# SECTION: hazard sweep (formerly 10d/10e) — assets across the hazard sweep
+# ═══════════════════════════════════════════════════════════════════════════════
+# Collects the canonical run (k = 1) and every complete high-hazard run,
+# runs/<LC_SCENARIO>_haz<tag>/ (made by 15_run_hazard_sweep.R or by hand), and
+# traces how policy performance changes with the level of conversion pressure.
+# Each run's rate, k and source-panel md5 are read from its hazard_scaling.json.
+#
+# The gap between rolling and greedy is split into its two parts:
+#   myopic vs greedy  = value of using conversion risk at all (risk frozen at today's level)
+#   rolling vs myopic = value of foresight (knowing how risk and benefit change)
+#   rolling vs greedy = the two together
+#
+# USAGE (PPR_HAZARD and PPR_BUDGET unset):
+#   Rscript 10_results_assets.R
+#
+# Writes to the canonical run's output_figs (raw numbers):
+#   haz_sweep.csv            one row per run x scenario: rate, k, value by policy,
+#                            % improvement and Δpairs for the three comparisons
+#   fig_haz_sweep_pct        % improvement vs annual rate, three panels (PNG + PDF)
+#   fig_haz_sweep_pairs      Δpairs vs annual rate, three panels (PNG + PDF)
+#   fig_haz_sweep_risk_box   per-period risk by decade, one box per run, by RCP (PNG + PDF)
+#   haz_sweep_metadata.json  runs included, canonical rate, staleness check
+# ═══════════════════════════════════════════════════════════════════════════════
+
+if (!exists(".SETUP_DONE")) source("00_setup.R")
+
+# ── CONFIG ─────────────────────────────────────────────────────────────────────
+SWEEP_PATTERN <- paste0("^", LC_SCENARIO, "_haz[0-9]+(p[0-9]+)?$")   # hazard run folders
+# Short labels for the top axis, keyed by the rate as typed in PPR_HAZARD.
+# Rates not listed here are labelled by their value.
+BENCH_LAB <- c(`0.09` = "Dahl 2014",
+               `0.28` = "Johnston 2013",
+               `0.4`  = "Stephens 2008",
+               `0.57` = "Kemink 2023",
+               `0.95` = "Rashford 2011 (2006\u201311)",
+               `1.33` = "Rashford 2011")
+CANON_LAB <- "Canonical"
+
+OUT_DIR   <- DIR_FIGS                        # the canonical run's output_figs
+CANON_RES <- file.path(DIR_OUT, "model_results.csv")
+CANON_PNL <- file.path(DIR_DERIVED, "data_panel.rds")
+
+DPI         <- 300
+BASE_SIZE   <- 12
+BASE_FAMILY <- "serif"                       # same as 10_results_assets.R
+SAVE_PDF    <- TRUE
+# ────────────────────────────────────────────────────────────────────────────────
+
+if (HAZARD_RUN || BUDGET_SWEEP)
+  skip_section("runs only in the canonical configuration (PPR_HAZARD and PPR_BUDGET unset).")
+if (!file.exists(CANON_RES))
+  skip_section("canonical results not found at ", CANON_RES, ". Run the canonical pipeline first.")
+if (!dir.exists(OUT_DIR)) dir.create(OUT_DIR, recursive = TRUE)
+
+suppressPackageStartupMessages({
+  library(readr); library(dplyr); library(tidyr); library(ggplot2); library(scales)
+})
+
+SCEN_LEVELS <- c("rcp45_wet", "rcp45_dry", "rcp85_wet", "rcp85_dry", "stationary")
+CLIM        <- SCEN_LEVELS[1:4]
+SCEN_LAB1   <- c(rcp45_wet = "RCP 4.5 wet", rcp45_dry = "RCP 4.5 dry",
+                 rcp85_wet = "RCP 8.5 wet", rcp85_dry = "RCP 8.5 dry")
+SCEN_COL    <- c(rcp45_wet = "#3B7EA1", rcp45_dry = "#9DBBCB",
+                 rcp85_wet = "#9E2B3A", rcp85_dry = "#E0A090")
+CMP_LAB     <- c(mg = "Myopic vs. greedy\n(value of using risk)",
+                 rm = "Rolling vs. myopic\n(value of foresight)",
+                 rg = "Rolling vs. greedy\n(total)")
+
+theme_ppr <- function(base_size = BASE_SIZE, base_family = BASE_FAMILY) {
+  theme_minimal(base_size = base_size, base_family = base_family) %+replace%
+    theme(
+      axis.title    = element_text(colour = "grey25"),
+      axis.title.y  = element_text(angle = 90, margin = margin(r = 6)),
+      panel.grid.minor = element_blank(),
+      legend.position = "top", legend.justification = "right",
+      legend.title = element_blank(),
+      strip.text = element_text(face = "bold", hjust = 0, size = rel(0.95)),
+      plot.background = element_rect(fill = "white", colour = NA),
+      plot.margin = margin(10, 14, 8, 10)
+    )
+}
+theme_set(theme_ppr())
+
+save_fig <- function(p, name, w, h) {
+  ggsave(file.path(OUT_DIR, paste0(name, ".png")), p, width = w, height = h, dpi = DPI, bg = "white")
+  if (SAVE_PDF) {
+    ok <- tryCatch(
+      { ggsave(file.path(OUT_DIR, paste0(name, ".pdf")), p, width = w, height = h,
+               device = cairo_pdf, bg = "white"); TRUE },
+      warning = function(w) FALSE,
+      error   = function(e) FALSE)
+    if (!ok)
+      suppressWarnings(ggsave(file.path(OUT_DIR, paste0(name, ".pdf")), p,
+                              width = w, height = h, bg = "white"))
+  }
+  invisible(p)
+}
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# RUNS  —  canonical + every complete hazard run
+# ═══════════════════════════════════════════════════════════════════════════════
+cand <- grep(SWEEP_PATTERN, list.dirs("runs", recursive = FALSE, full.names = FALSE),
+             value = TRUE)
+runs <- bind_rows(lapply(cand, function(id) {
+  js  <- file.path("runs", id, "derived_data", "hazard_scaling.json")
+  res <- file.path("runs", id, "output_data", "model_results.csv")
+  if (!file.exists(js) || !file.exists(res)) return(NULL)
+  s <- jsonlite::read_json(js, simplifyVector = TRUE)
+  tibble(run_id = id, res = res, rate_typed = s$target_annual_pct, k = s$k,
+         decadal = s$target_decadal, canon_decadal = s$canonical_mean_2020_weighted,
+         source_md5 = s$source_panel_md5)
+}))
+if (!nrow(runs))
+  skip_section("no complete hazard runs matching runs/", LC_SCENARIO, "_haz*. ",
+               "Run 15_run_hazard_sweep.R first.")
+
+## staleness: every hazard run must come from the canonical panel as it is now
+canon_md5 <- if (file.exists(CANON_PNL)) unname(tools::md5sum(CANON_PNL)) else NA_character_
+runs <- runs %>% mutate(stale = !is.na(canon_md5) & source_md5 != canon_md5)
+if (any(runs$stale))
+  warning("Built from an older canonical panel (rerun them with 15_run_hazard_sweep.R): ",
+          paste(runs$run_id[runs$stale], collapse = ", "), call. = FALSE)
+
+## canonical point: its weighted 2020 rate, as recorded by 14 (identical across runs
+## built from the same canonical panel)
+canon_decadal <- runs$canon_decadal[!runs$stale][1]
+if (is.na(canon_decadal)) canon_decadal <- runs$canon_decadal[1]
+to_annual <- function(d) 100 * (1 - (1 - d)^(1 / 10))     # decadal prob -> annual %
+
+pts <- bind_rows(
+  tibble(run_id = RUN_ID, res = CANON_RES, rate = to_annual(canon_decadal), k = 1,
+         decadal = canon_decadal, label = CANON_LAB, stale = FALSE),
+  runs %>% transmute(run_id, res, rate = rate_typed, k, decadal,
+                     # format() each rate on its own: on a vector it pads to a common width
+                     label = coalesce(unname(BENCH_LAB[vapply(rate_typed, format, "")]),
+                                      paste0(vapply(rate_typed, format, ""), "%")),
+                     stale)
+) %>% arrange(rate)
+message("Runs: ", paste0(pts$run_id, " (", signif(pts$rate, 3), "%/yr, k = ",
+                         signif(pts$k, 3), ")", collapse = ", "))
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# TABLE  —  value by policy and the three comparisons, per run x scenario
+# ═══════════════════════════════════════════════════════════════════════════════
+pct_improve <- function(a, b, d) ifelse(abs(d) < 1 | abs(b) < 1e-9, NA_real_, 100 * (a - b) / b)
+
+sweep <- bind_rows(lapply(seq_len(nrow(pts)), function(i) {
+  read_csv(pts$res[i], show_col_types = FALSE) %>%
+    mutate(scenario = as.character(scenario)) %>%
+    select(scenario, model, value_added) %>%
+    pivot_wider(names_from = model, values_from = value_added) %>%
+    mutate(run_id = pts$run_id[i], label = pts$label[i], annual_rate_pct = pts$rate[i],
+           decadal_rate = pts$decadal[i], k = pts$k[i], stale = pts$stale[i])
+})) %>%
+  transmute(run_id, label, annual_rate_pct, decadal_rate, k, stale,
+            scenario = factor(scenario, levels = SCEN_LEVELS),
+            greedy, myopic, rolling,
+            mg_pairs = myopic - greedy, rm_pairs = rolling - myopic, rg_pairs = rolling - greedy,
+            mg_pct = pct_improve(myopic,  greedy, mg_pairs),
+            rm_pct = pct_improve(rolling, myopic, rm_pairs),
+            rg_pct = pct_improve(rolling, greedy, rg_pairs),
+            ranking_holds = rolling >= myopic - 1e-6 & myopic >= greedy - 1e-6) %>%
+  arrange(annual_rate_pct, scenario)
+write_csv(sweep, file.path(OUT_DIR, "haz_sweep.csv"))
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# FIGURES  —  the three comparisons against the annual rate (climate scenarios)
+# x-axis labels give the annual rate and the benchmark each run stands for.
+# ═══════════════════════════════════════════════════════════════════════════════
+long_of <- function(kind) {
+  sweep %>% filter(scenario %in% CLIM) %>%
+    select(annual_rate_pct, scenario, ends_with(paste0("_", kind))) %>%
+    pivot_longer(-c(annual_rate_pct, scenario), names_to = "cmp", values_to = "value") %>%
+    mutate(cmp = factor(sub(paste0("_", kind), "", cmp), levels = names(CMP_LAB)))
+}
+x_scale <- scale_x_continuous("Annual conversion rate (%)", breaks = pts$rate,
+                              labels = paste0(sprintf("%.2f", pts$rate), "  ", pts$label))
+sweep_plot <- function(d, y_lab, y_labels) {
+  ggplot(d, aes(annual_rate_pct, value, colour = scenario)) +
+    geom_vline(xintercept = pts$rate, colour = "grey88", linewidth = .3) +
+    geom_line(linewidth = .7) + geom_point(size = 1.6) +
+    facet_wrap(~ cmp, ncol = 3, scales = "free_y", labeller = as_labeller(CMP_LAB)) +
+    scale_colour_manual(values = SCEN_COL, labels = SCEN_LAB1) +
+    x_scale +
+    scale_y_continuous(y_lab, labels = y_labels, limits = c(0, NA),
+                       expand = expansion(mult = c(0, .06))) +
+    theme(panel.grid.major.x = element_blank(),
+          axis.text.x = element_text(angle = 90, vjust = .5, hjust = 1, size = rel(.75)))
+}
+save_fig(sweep_plot(long_of("pct"), "% improvement", label_number(suffix = "%")),
+         "fig_haz_sweep_pct", 13, 5.2)
+save_fig(sweep_plot(long_of("pairs"), "\u0394pairs (discounted)", label_comma()),
+         "fig_haz_sweep_pairs", 13, 5.2)
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# CONVERSION RISK  —  per-period risk by decade, one box per run, panels by RCP.
+# trans_prob varies by RCP only (not wet/dry); 2100 has no next period, so excluded.
+# ═══════════════════════════════════════════════════════════════════════════════
+pnl_of <- function(id) if (id == RUN_ID) CANON_PNL else
+  file.path("runs", id, "derived_data", "data_panel.rds")
+risk_pnl <- vapply(pts$run_id, pnl_of, "")
+if (!all(file.exists(risk_pnl))) {
+  message("Risk figure skipped: panel missing for ",
+          paste(pts$run_id[!file.exists(risk_pnl)], collapse = ", "), ".")
+} else {
+  rate_lab <- paste0(sprintf("%.2f", pts$rate), "%/yr")
+  rk <- bind_rows(lapply(seq_len(nrow(pts)), function(i) {
+    readRDS(risk_pnl[i]) %>%
+      distinct(eau_id, year, rcp, value = trans_prob) %>%
+      filter(year < 2100, rcp %in% c("45", "85")) %>%
+      mutate(run = rate_lab[i])
+  })) %>%
+    mutate(rcp_lab = factor(recode(rcp, `45` = "RCP 4.5", `85` = "RCP 8.5"),
+                            levels = c("RCP 4.5", "RCP 8.5")),
+           run = factor(run, levels = rate_lab),          # pts is sorted by rate
+           pct = value * 100)
+
+  dg <- position_dodge(width = .85)
+  fig_haz_sweep_risk_box <- ggplot(rk, aes(factor(year), pct, fill = run, colour = run)) +
+    geom_boxplot(aes(group = interaction(year, run)), outlier.shape = NA,
+                 position = dg, width = .78, alpha = .35, linewidth = .3) +
+    stat_summary(aes(group = run), fun = max, geom = "point", shape = 95, size = 4,
+                 position = dg, show.legend = FALSE) +
+    stat_summary(aes(group = run), fun = mean, geom = "point", shape = 23, size = 1.2,
+                 fill = "white", position = dg, show.legend = FALSE) +
+    facet_wrap(~ rcp_lab, ncol = 1) +
+    scale_fill_viridis_d(option = "rocket", begin = .85, end = .15) +
+    scale_colour_viridis_d(option = "rocket", begin = .85, end = .15) +
+    scale_y_continuous("Per-period conversion risk",
+                       labels = label_number(suffix = "%", accuracy = 1),
+                       expand = expansion(mult = c(.02, .06))) +
+    scale_x_discrete("year") +
+    labs(caption = "Box = median and interquartile range; diamond = mean; dash = maximum.") +
+    theme(panel.grid.major.x = element_blank(),
+          plot.caption = element_text(colour = "grey40", size = rel(.72), hjust = 0))
+  save_fig(fig_haz_sweep_risk_box, "fig_haz_sweep_risk_box", 13, 8)
+}
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# METADATA
+# ═══════════════════════════════════════════════════════════════════════════════
+jsonlite::write_json(
+  list(generated_date       = format(Sys.Date(), "%Y-%m-%d"),
+       canonical_run        = RUN_ID,
+       canonical_annual_pct = to_annual(canon_decadal),
+       runs                 = pts %>% select(run_id, annual_rate_pct = rate, k, label, stale),
+       any_stale            = any(pts$stale)),
+  file.path(OUT_DIR, "haz_sweep_metadata.json"), auto_unbox = TRUE, pretty = TRUE,
+  digits = NA)
+
+message("\nDone. ", nrow(pts), " runs (canonical + ", nrow(runs), " hazard) written to '",
+        OUT_DIR, "/': haz_sweep.csv + figures + haz_sweep_metadata.json.")
+})

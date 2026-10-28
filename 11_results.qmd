@@ -348,12 +348,11 @@ across 20 WMDs**, over **9 decadal periods** and **5 scenarios** (RCP
 
 # Model Formulation
 
-**Decision model.** Let $i \in \mathcal{I}$ index EAUs
-($|\mathcal{I}| = 879$) and $t \in \{0, \dots, T\}$ index decades (0 =
-2020, $T = 8$ = 2100). For EAU $i$ in period $t$, let $b_{i,t}$ be
-projected breeding duck pairs under a given scenario, $\lambda_{i,t}$
-the per-period probability that its suitable habitat is converted, and
-$c_{i,t}$ the cost of acquisition (land value per hectare × EAU area,
+**Decision model.** EAUs are indexed over $i \in \mathcal{I}$ and $t \in \{0, \dots, T\}$ index decades (0 =
+2020, $T = 8$ = 2100). For EAU $i$ in period $t$, $b_{i,t}$ is the
+projected breeding duck pairs under a given scenario; $\lambda_{i,t}$ is
+the per-period probability that its suitable habitat is converted; and
+$c_{i,t}$ is the cost of acquisition (land value per hectare × EAU area,
 inflated at 2% per year).
 
 *Survival.* If EAU $i$ is not acquired, the probability that it remains
@@ -361,14 +360,13 @@ unconverted through period $t$ is
 
 $$S_{i,0} = 1, \qquad S_{i,t} = \prod_{s=0}^{t-1} \left(1 - \lambda_{i,s}\right), \quad t \ge 1.$$
 
-where for a given EAU, its per-decade survival probability is defined as 1-$\lambda_{i,t}$ (i.e., the conversion hazard risk) and the cumulative survival probability in time $t$ is the product of each decade's survival probability from 2020 through the decade just before $t$ ($t$-1). 
+where for a given EAU, its per-decade survival probability is defined as 1-$\lambda_{i,t}$ and the cumulative survival probability in time $t$ is the product of each decade's survival probability from 2020 through the decade just before $t$ ($t$-1). 
 
 *Acquisition value.* The conservation value of acquiring an EAU is calculated as the expected loss its acquisition prevents. Acquiring EAU $i$ in period $\tau$ protects its benefit with certainty from $\tau$ onward.
 
 $$V_{i,\tau} = \sum_{t=\tau}^{T} \delta^{t}\, b_{i,t} \left(1 - S_{i,t}\right),$$
 where $V_{i,\tau}$ is the value of acquiring parcel $i$ in period
-$\tau$, expressed as the total time-discounted sum of duck-pairs
-across the landscape from $\tau$ through 2100; $\delta$ is the decadal
+$\tau$, expressed as the total time-discounted sum of duck-pairs from $\tau$ through 2100; $\delta$ is the decadal
 discount factor (0.95); $b_{i,t}$ is the projected benefit (duck
 pairs) in parcel $i$ in period $t$ under a given scenario; and
 $S_{i,t}$ is the probability that parcel $i$ survives (i.e., remains
@@ -383,14 +381,30 @@ conversion does not remove parcels from the set, but instead enters
 this weight and counts the full (time-discounted) value; unacquired
 parcels retain only their survival-discounted value.
 
-*Optimization.* Let $x_{i,t} \in \{0,1\}$ equal 1 if EAU $i$ is acquired
-in period $t$, and let $\mathcal{A}_\tau$ be the set of EAUs not yet
-acquired at the start of period $\tau$. At each decision period $\tau$,
-the ILP policies solve
+*Greedy policy.* The greedy policy does not solve an optimization problem.
+At each decision period $\tau$, it ranks every available EAU
+$i \in \mathcal{A}_\tau$ by its current benefit-to-cost ratio,
+
+$$r_{i,\tau} = \frac{b_{i,\tau}}{c_{i,\tau}},$$
+
+the number of duck pairs per dollar today. It then works down the list from
+highest to lowest ratio. It buys each EAU whose cost fits within the budget
+remaining in period $\tau$ and skips any that doesn't fit. It stops when it
+reaches the end of the list. The greedy policy ignores conversion risk, since $\lambda$
+never enters the ranking. It ignores the future, because it considers only
+period $\tau$ and plans no later purchases. And it doesn't search for the best
+combination within the period: ranking by ratio can leave a better-value set
+of parcels unpurchased. Greedy represents a common status-quo approach to
+prioritizing acquisitions: buy the most habitat per dollar available now.
+
+
+*Optimization.* The rolling and myopic policies use an ILP approach, employing a Gurobi solver. If EAU $i$ is acquired in period $t$, then $x_{i,t} \in \{0,1\}$ equals 1;  $\mathcal{A}_\tau$ is the set of EAUs not yet acquired at the start of period $\tau$. At each decision period $\tau$, the ILP policies solves to maximize V (acquisition value) according to:
 
 $$\max_{x} \; \sum_{i \in \mathcal{A}_\tau} \sum_{t=\tau}^{T} \hat{V}_{i,t}\, x_{i,t}$$
+where $\hat{V}$ is the belief about expected value (i.e., discounted duck pairs saved). The ILP policies differ only in $\hat{V}$. For the rolling-horizon policy, $\hat{V}_{i,t} = V_{i,t}$, computed from the projected trajectories of
+$b$ and $\lambda$. For the myopic policy, benefit and hazard are held at their period-$\tau$ values for the whole horizon, so the coefficients are recomputed at every solve.
 
-subject to
+In both policies, maximization of expected benefit is subject to:
 
 $$\begin{aligned}
 \sum_{t=\tau}^{T} x_{i,t} &\le 1 && \forall\, i \in \mathcal{A}_\tau && \text{(each EAU acquired at most once)} \\
@@ -399,17 +413,10 @@ x_{i,t} &\in \{0,1\}.
 \end{aligned}$$
 
 Only the period-$\tau$ decisions are carried out. Then
-$\mathcal{A}_{\tau+1} = \mathcal{A}_\tau \setminus \{i : x_{i,\tau} = 1\}$
+$\mathcal{A}_{\tau+1}$ (the current set of available parcels) is re-evaluated
 and the problem is solved again. Conversion does not remove parcels from
 $\mathcal{A}_\tau$; it enters only through the weight $(1 - S_{i,t})$.
 
-The policies differ only in $\hat{V}$. For the rolling-horizon policy,
-$\hat{V}_{i,t} = V_{i,t}$, computed from the projected trajectories of
-$b$ and $\lambda$. For the myopic policy, benefit and hazard are held at
-their period-$\tau$ values for the whole horizon, so the coefficients
-are recomputed at every solve:
-
-$$\hat{V}^{(\tau)}_{i,t} = \sum_{s=t}^{T} \delta^{s}\, b_{i,\tau} \left[1 - \left(1 - \lambda_{i,\tau}\right)^{s}\right].$$
 
 *Budget.* The budget for each period is
 
@@ -522,7 +529,7 @@ with no or limited foresight under any degree of non-stationarity.
 **My interpretation: A non-stationary, climate-aware acquisition policy
 could deliver a \~50% improvement in conservation outcomes as compared
 to the greedy (i.e., status quo) acquisition policy in use today,
-potentially protecting an additional 37,000-69,000 duck pairs by 2100**.
+potentially protecting an additional 37,000-69,000 of cumulative duck pairs by 2100**.
 
 ```{r}
 #| label: tbl-gap-vs-rolling
@@ -549,7 +556,7 @@ falls \~33-36% short of rolling.
 
 **My interpretation: Current use of acquisition policies that assume
 environmental stationarity fall short of an optimal acquisition policy
-by \~30%, failing to secure an additional 37,000-69,000 potential duck
+by \~30%, failing to secure an additional 37,000-69,000 potential cumulative duck
 pairs by 2100**.
 
 ```{r}
@@ -608,7 +615,7 @@ measure of habitat erosion standing in for habitat conversion
 probability). It may also be related to a relatively conservative budget
 parameter (only \~60-70 EAUs are acquired in most scenarios). That said,
 these numbers might not be that different from real world estimates:
-Kemnick et al 2023 estimated that the program impact for SWAP was "an
+Kemink et al 2023 estimated that the program impact for SWAP was "an
 avoided loss between 0.00% and 0.02% of the carrying capacity for broods
 and breeding waterfowl from 2008–2017."
 
@@ -665,15 +672,617 @@ cat("*(Maps not generated — the spatial schedule was absent when",
 ```
 
 ```{r}
-#| child: !expr if (file.exists(file.path(OUT_DIR, "haz_sweep_metadata.json"))) "11d_hazard_sensitivity.qmd" else character(0)
+#| output: asis
+## Conversion-risk sensitivity: hidden unless script 10 has written its assets (haz_sweep_metadata.json)
+if (!file.exists(file.path(OUT_DIR, "haz_sweep_metadata.json"))) cat("::: {.content-hidden}\n")
+```
+
+<!-- ════════════════════════════════════════════════════════════════════════════
+ SECTION: conversion-risk sensitivity (formerly the child file 11d_hazard_sensitivity.qmd).
+ Shown under Updates ONLY IF the hazard-sweep section of 10_results_assets.R has run
+ (haz_sweep_metadata.json exists in the canonical run's output_figs); otherwise the
+ chunks around it hide it. Uses objects defined in the setup chunk above (OUT_DIR,
+ GREEN_HEADER).
+════════════════════════════════════════════════════════════════════════════ -->
+
+### 10/26/2026: Conversion risk sensitivity analysis
+
+```{r}
+#| label: hsw-setup
+#| include: false
+## Assets are written by the hazard-sweep section of 10_results_assets.R from the canonical run
+## (k = 1) and every complete high-hazard run made by 15_run_hazard_sweep.R.
+swmeta <- tryCatch(
+  jsonlite::read_json(file.path(OUT_DIR, "haz_sweep_metadata.json"), simplifyVector = TRUE),
+  error = function(e) NULL)
+sw_ok     <- !is.null(swmeta) && file.exists(file.path(OUT_DIR, "haz_sweep.csv"))
+sw_fig_ok <- function(f) sw_ok && file.exists(file.path(OUT_DIR, f))
+sw_stale  <- sw_ok && isTRUE(swmeta$any_stale)
+
+sw <- if (sw_ok) read_csv(file.path(OUT_DIR, "haz_sweep.csv"), show_col_types = FALSE) else NULL
+CLIM_SW <- c("rcp45_wet", "rcp45_dry", "rcp85_wet", "rcp85_dry")
+CANON_DISPLAY <- "FOREsce derived"   # shown in place of script 10's "Canonical" label
+
+## numbers used inline in the prose
+sw_n      <- if (sw_ok) nrow(swmeta$runs) else 0
+sw_canon  <- if (sw_ok) sprintf("%.2f%%", swmeta$canonical_annual_pct) else "?"
+sw_max    <- if (sw_ok) sprintf("%.2f%%", max(swmeta$runs$annual_rate_pct)) else "?"
+sw_kmax   <- if (sw_ok) sprintf("%.1f", max(swmeta$runs$k)) else "?"
+
+## "min–max" across the four climate scenarios
+fmt_rng <- function(lo, hi) ifelse(is.na(lo), "\u2014",
+  ifelse(abs(hi - lo) < 0.05, sprintf("%.1f%%", lo), sprintf("%.1f\u2013%.1f%%", lo, hi)))
+
+## Same table look as the land-cover comparison tables.
+style_sweep_table <- function(df, groups, subs, footer_text = NULL,
+                              first_lab = "Annual rate", font_size = 8.5) {
+  rle_g <- rle(groups)
+  seps  <- c(1, head(1 + cumsum(rle_g$lengths), -1))
+  bd    <- officer::fp_border(color = "#dddddd", width = 1)
+  ft <- flextable(df)
+  ft <- set_header_labels(ft, values = setNames(as.list(c("", subs)), names(df)))
+  ft <- add_header_row(ft, top = TRUE, values = c(first_lab, rle_g$values),
+                       colwidths = c(1, rle_g$lengths))
+  ft <- merge_at(ft, i = 1:2, j = 1, part = "header")
+  ft <- bg(ft, part = "header", bg = GREEN_HEADER)
+  ft <- color(ft, part = "header", color = "white")
+  ft <- bold(ft, part = "header")
+  ft <- align(ft, align = "center", part = "all")
+  ft <- align(ft, j = 1:2, align = "left", part = "all")
+  ft <- valign(ft, j = 1, valign = "center", part = "header")
+  ft <- bold(ft, j = 1, part = "body")
+  if (nrow(df) > 1) ft <- bg(ft, i = seq(2, nrow(df), by = 2), bg = "#f5f5f2", part = "body")
+  ft <- border_remove(ft)
+  ft <- hline(ft, i = 1, part = "header", border = officer::fp_border(color = "white", width = 1))
+  ft <- vline(ft, j = seps, border = bd, part = "header")
+  ft <- vline(ft, j = seps, border = bd, part = "body")
+  ft <- padding(ft, padding.top = 3, padding.bottom = 3, padding.left = 3,
+                padding.right = 3, part = "all")
+  ft <- fontsize(ft, size = font_size, part = "all")
+  ft <- autofit(ft)                      # header + body only: footer not added yet
+   wv <- dim(ft)$widths                                         # per-column widths (in)
+  ft <- width(ft, width = wv * min(1, TABLE_MAX_W / sum(wv)))  # shrink to fit the page
+  if (!is.null(footer_text)) {
+    ft <- add_footer_lines(ft, values = footer_text)
+    ft <- fontsize(ft, size = 7.5, part = "footer")
+    ft <- color(ft, color = "grey40", part = "footer")
+    ft <- align(ft, align = "left", part = "footer")
+  }
+  set_table_properties(ft, layout = "fixed")
+}
+
+## captions (edit here) ----------------------------------------------------------
+cap_sw_table <- paste0("Improvement of the rolling policy over greedy/myopic ",
+                       "across conversion rates. Range across the four climate scenarios.")
+cap_sw_pct   <- paste0("**Policy performance across conversion rates (% improvement).** ",
+                       "Left: myopic vs. greedy (value of using conversion risk); middle: rolling ",
+                       "vs. myopic (value of foresight); right: rolling vs. greedy (total). ",
+                       "Each tick gives the annual rate and the estimate it stands for.")
+cap_sw_pairs <- paste0("Policy performance across conversion rates (", "$\\Delta$",
+                       "pairs). Same comparisons as the previous figure, in discounted ",
+                       "duck-pairs rather than percent.")
+cap_sw_risk  <- paste0("**Per-period conversion risk across EAUs, by decade and emissions scenario.** ",
+                       "Colour = annual conversion rate of each run (", CANON_DISPLAY, " = lightest). ",
+                       "Box = median and IQR; diamond = mean; dash = maximum.")
 ```
 
 ```{r}
-#| child: !expr if (file.exists(file.path(OUT_DIR, "bud_metadata.json"))) "11c_budget_sensitivity.qmd" else character(0)
+#| label: hsw-stale-note
+#| results: asis
+#| eval: !expr sw_stale
+cat("*(Warning: some sweep runs were built from an older canonical inputs panel.",
+    "Rerun 15_run_hazard_sweep.R and 10_results_assets.R before relying",
+    "on this section.)*")
+```
+
+In an effort to compare our model results to published estimates of landscape-scale conversion rates for wetlands and grasslands, I re-ran the model with conversion risk rescaled to different conversion rates. The FORESce derived conversion risk data acts as a lower bound: the landscape average of suitable-to-unsuitable habitat transition is equivalent to a 0.17% annual rate in 2020. Other published estimates vary, ranging from 0.28% (Johnston et al 2013) to 1.33% (Rashford et al. 2011).
+
+I re-scaled all conversion risk values so that the mean landscape-wide 2020 conversion rate (i.e., the share of all unprotected suitable habitat converted per decade) equaled the target rate. I calculated a scaling factor, k, which would bring the mean landscape-scale conversion rate to the literature-derived rate, then applied that scaling factor to the conversion risk table in every EAU in every decade. This approach multiplies the underlying conversion rate by the same factor in every EAU, decade and scenario, so the spatial pattern and the trajectory of conversion risk over time (including the mid-century collapse under GCAM) are unchanged. Benefit, cost, budget and land cover are identical to the original run.
+
+We find that the overall pattern of rolling outperforms myopic which outperforms greedy still holds. The performance gap, however, narrows. Rather than ~50% improvement of rolling > greedy, for example, we see ~ 35-40% improvement. The value of the rolling policy as compared to the myopic or greedy policy declines as conversion risk rises. 
+
+```{=latex}
+\needspace{18\baselineskip}   % keep this whole table on one page (moves to next page if it won't fit)
+```
+{{< pagebreak >}} 
+
+```{r}
+#| label: tbl-hsw
+#| tbl-cap: !expr cap_sw_table
+#| eval: !expr sw_ok
+tb <- sw %>%
+  filter(scenario %in% CLIM_SW) %>%
+  group_by(annual_rate_pct, label, k) %>%
+  summarise(rm_lo = min(rm_pct), rm_hi = max(rm_pct),
+            rg_lo = min(rg_pct), rg_hi = max(rg_pct),
+            ranking = all(ranking_holds), .groups = "drop") %>%
+  arrange(annual_rate_pct)
+df <- data.frame(Rate  = sprintf("%.2f%%", tb$annual_rate_pct),
+                 Bench = ifelse(tb$label == "Canonical", CANON_DISPLAY, tb$label),
+                 K     = sprintf("%.2f", tb$k),
+                 rm    = fmt_rng(tb$rm_lo, tb$rm_hi),
+                 rg    = fmt_rng(tb$rg_lo, tb$rg_hi),
+                 ord   = ifelse(tb$ranking, "Yes", "NO"), check.names = FALSE)
+style_sweep_table(df,
+  groups = c("Run", "Run", "Rolling vs. Myopic", "Rolling vs. Greedy", "Ranking holds"),
+  subs   = c("Benchmark", "k", "", "", "all scenarios"),
+  footer_text = c("% improvement = (better policy \u2212 comparison policy) as % of the comparison policy's value; range across the four climate scenarios.",
+                  "Annual rate = target rate per year; for the canonical run, its habitat-weighted 2020 rate."))
 ```
 
 ```{r}
-#| child: !expr if (file.exists(file.path(OUT_DIR, "cmp_metadata.json"))) "11b_landcover_comparison.qmd" else character(0)
+#| label: fig-hsw-pct
+#| fig-cap: !expr cap_sw_pct
+#| out-width: 100%
+#| eval: !expr sw_fig_ok("fig_haz_sweep_pct.png")
+knitr::include_graphics(file.path(OUT_DIR, "fig_haz_sweep_pct.png"))
+```
+
+
+```{r}
+#| label: fig-hsw-risk
+#| fig-cap: !expr cap_sw_risk
+#| out-width: 100%
+#| eval: !expr sw_fig_ok("fig_haz_sweep_risk_box.png")
+knitr::include_graphics(file.path(OUT_DIR, "fig_haz_sweep_risk_box.png"))
+```
+
+In contrast to the landcover comparison section (below), we see here that the trajectory of conversion risk is the same across all scaling factors- only the magnitude of conversion risk changes. 
+
+
+**Data Sources:**
+Johnston et al 2013: Johnston, Carol A. "Wetland losses due to row crop expansion in the Dakota Prairie Pothole Region." Wetlands 33.1 (2013): 175-182. 0.28% annual NWI wetland loss rate. 
+
+Stephens et al 20028: Stephens, Scott E., et al. "Predicting risk of habitat conversion in native temperate grasslands." Conservation biology 22.5 (2008): 1320-1330. 0.4% annualized probability of conversion from grassland to cropland, 1989-2003
+
+Kemink et al 2023: Kemink, Kaylan M., et al. "Assessing prioritization measures for a private land conservation program in the US Prairie Pothole Region." Conservation Science and Practice 5.7 (2023): e12939. 0.57% estimated upper bound for wetland drainage rates. 
+
+Rashford et al 2011: Rashford, Benjamin S., Johann A. Walker, and Christopher T. Bastian. "Economics of grassland conversion to cropland in the Prairie Pothole Region." Conservation Biology 25.2 (2011): 276-284.
+
+{{< pagebreak >}}
+
+```{r}
+#| output: asis
+if (!file.exists(file.path(OUT_DIR, "haz_sweep_metadata.json"))) cat(":::\n")
+```
+
+```{r}
+#| output: asis
+## Budget sensitivity: hidden unless script 10 has written its assets (bud_metadata.json)
+if (!file.exists(file.path(OUT_DIR, "bud_metadata.json"))) cat("::: {.content-hidden}\n")
+```
+
+<!-- ════════════════════════════════════════════════════════════════════════════
+ SECTION: budget sensitivity (formerly the child file 11c_budget_sensitivity.qmd).
+ Shown under Updates ONLY IF the budget section of 10_results_assets.R has run
+ (bud_metadata.json exists in the canonical run's output_figs); otherwise the chunks
+ around it hide it. Uses objects defined in the setup chunk above (OUT_DIR,
+ GREEN_HEADER, COL_MODEL, COL_MODEL_TXT, SCEN_LAB1, fmt_pairs, fmt_pct, fmt_pct2,
+ DELTA, DP). Write the prose in the *[Commentary …]* placeholders.
+════════════════════════════════════════════════════════════════════════════ -->
+
+### 10/21/2026: Budget sensitivity analysis
+
+```{r}
+#| label: bud-setup
+#| include: false
+## Budget-sweep assets are written by the budget section of 10_results_assets.R into the canonical
+## run's output_figs (bud_* files), from the runs made by 13_run_budget_sweep.R.
+bmeta <- tryCatch(
+  jsonlite::read_json(file.path(OUT_DIR, "bud_metadata.json"), simplifyVector = TRUE),
+  error = function(e) NULL)
+bud_ok      <- !is.null(bmeta) &&
+               file.exists(file.path(OUT_DIR, "bud_headline.csv")) &&
+               file.exists(file.path(OUT_DIR, "bud_value_added.csv"))
+bud_conv_ok <- bud_ok && file.exists(file.path(OUT_DIR, "bud_convergence.csv"))
+bud_fig_ok  <- function(f) bud_ok && file.exists(file.path(OUT_DIR, f))
+
+BUDS      <- if (bud_ok) bmeta$budgets else numeric(0)
+B_CANON   <- if (bud_ok) bmeta$canonical_budget else 5
+EAU_HA    <- if (bud_ok) bmeta$eau_area_ha else NA_real_
+bud_list  <- function(x) if (length(x) < 2) format(x) else
+  paste0(paste(format(x[-length(x)]), collapse = ", "), " and ", format(x[length(x)]))
+
+## sentence on the canonical-budget rerun (inline in the prose below)
+canon_sentence <- if (bud_ok && !is.null(bmeta$canon_check)) {
+  cc <- bmeta$canon_check
+  if (isTRUE(cc$identical))
+    paste0("The rerun at the canonical budget (", B_CANON, " EAUs per period) reproduced ",
+           "the main results exactly.")
+  else
+    paste0("The rerun at the canonical budget (", B_CANON, " EAUs per period) matched the ",
+           "main results to within ", signif(cc$max_abs_diff_pct, 2),
+           "% of acquisition value.")
+} else ""
+
+## budget label in tables
+bud_cell <- function(b) format(b)
+FOOT_CANON <- paste0("* = canonical budget (", B_CANON,
+                     " median-priced EAUs per period), as in the main results above.")
+
+## Table style: the house look of style_grouped_table in 11_results.qmd, with any
+## number of leading label columns (here Scenario + Budget). The first label column
+## is merged down each scenario block, and blocks (not rows) are zebra-striped.
+style_bud_table <- function(df, n_lead, lead_labs, groups, subs, footer_text = NULL,
+                            col_colors = NULL, font_size = 8.5) {
+  vcols <- names(df)[-(seq_len(n_lead))]
+  rle_g <- rle(groups)
+  seps  <- c(n_lead, head(n_lead + cumsum(rle_g$lengths), -1))
+  bd    <- officer::fp_border(color = "#dddddd", width = 1)
+  ft <- flextable(df)
+  ft <- set_header_labels(ft, values = setNames(as.list(c(rep("", n_lead), subs)), names(df)))
+  ft <- add_header_row(ft, top = TRUE, values = c(lead_labs, rle_g$values),
+                       colwidths = c(rep(1, n_lead), rle_g$lengths))
+  for (j in seq_len(n_lead)) ft <- merge_at(ft, i = 1:2, j = j, part = "header")
+  ft <- bg(ft, part = "header", bg = GREEN_HEADER)
+  ft <- color(ft, part = "header", color = "white")
+  ft <- bold(ft, part = "header")
+  ft <- align(ft, align = "center", part = "all")
+  ft <- align(ft, j = 1, align = "left", part = "all")
+  ft <- valign(ft, j = seq_len(n_lead), valign = "center", part = "header")
+  ft <- bold(ft, j = 1, part = "body")
+  if (!is.null(col_colors))
+    for (cc in intersect(names(col_colors), vcols))
+      ft <- color(ft, j = cc, color = col_colors[[cc]], part = "body")
+  ## zebra by block of the first label column, and a thin rule between blocks
+  blk  <- cumsum(c(TRUE, df[[1]][-1] != df[[1]][-nrow(df)]))
+  even <- which(blk %% 2 == 0)
+  if (length(even)) ft <- bg(ft, i = even, bg = "#f5f5f2", part = "body")
+  ends <- which(diff(blk) != 0)
+  ft <- border_remove(ft)
+  if (length(ends)) ft <- hline(ft, i = ends, border = bd, part = "body")
+  ft <- merge_v(ft, j = 1)
+  ft <- valign(ft, j = 1, valign = "top", part = "body")
+  ft <- hline(ft, i = 1, part = "header", border = officer::fp_border(color = "white", width = 1))
+  ft <- vline(ft, j = seps, border = bd, part = "header")
+  ft <- vline(ft, j = seps, border = bd, part = "body")
+  ft <- padding(ft, padding.top = 2, padding.bottom = 2, padding.left = 3,
+                padding.right = 3, part = "all")
+  ft <- fontsize(ft, size = font_size, part = "all")
+  ft <- autofit(ft)                      # header + body only: footer not added yet
+   wv <- dim(ft)$widths                                         # per-column widths (in)
+  ft <- width(ft, width = wv * min(1, TABLE_MAX_W / sum(wv)))  # shrink to fit the page
+  if (!is.null(footer_text)) {
+    ft <- add_footer_lines(ft, values = footer_text)
+    ft <- fontsize(ft, size = 7.5, part = "footer")
+    ft <- color(ft, color = "grey40", part = "footer")
+    ft <- align(ft, align = "left", part = "footer")
+  }
+  set_table_properties(ft, layout = "fixed")
+}
+
+## body text coloured by the policy each column refers to (as in the main tables)
+TXT_G <- COL_MODEL_TXT[["greedy"]]; TXT_M <- COL_MODEL_TXT[["myopic"]]
+TXT_R <- COL_MODEL[["rolling"]]
+
+## data ---------------------------------------------------------------------------
+if (bud_ok) {
+  bh <- read_csv(file.path(OUT_DIR, "bud_headline.csv"), show_col_types = FALSE) %>%
+    mutate(scenario = factor(scenario, levels = names(SCEN_LAB1))) %>%
+    arrange(scenario, budget)
+  bv <- read_csv(file.path(OUT_DIR, "bud_value_added.csv"), show_col_types = FALSE) %>%
+    mutate(scenario = factor(scenario, levels = names(SCEN_LAB1)))
+  bv_w <- bv %>%
+    select(scenario, budget, model, value_added, pct_over_baseline, n_acquired, hectares) %>%
+    pivot_wider(names_from = model,
+                values_from = c(value_added, pct_over_baseline, n_acquired, hectares)) %>%
+    arrange(scenario, budget)
+  ranking_all <- all(bh$ranking_holds[bh$scenario != "stationary"])
+}
+lead_cols <- function(d) data.frame(Scenario = unname(SCEN_LAB1[as.character(d$scenario)]),
+                                    Budget   = bud_cell(d$budget), check.names = FALSE)
+pct_or_dash <- function(dp, p) ifelse(abs(dp) < 1 | is.na(p), "\u2014", fmt_pct(p))
+
+## captions (edit here) -------------------------------------------------------------
+bud_caps <- list(
+  fig_improvement = paste(
+    "**Improvement of the rolling policy over greedy and myopic policies, by budget.**",
+    "% improvement = (rolling \u2212 comparison policy) as % of the comparison policy's",
+    "acquisition value. Budget = median-priced EAUs per period."),
+  tbl_improvement =
+    "**Improvement of the rolling policy over greedy and myopic policies, by budget and scenario.**",
+  tbl_shortfall =
+    "**Shortfall of greedy and myopic policies relative to the rolling policy, by budget and scenario.**",
+  fig_overtime = paste(
+    "**Cumulative performance relative to the rolling policy, by budget.** Discounted",
+    "duck-pairs secured by the greedy and myopic policies minus those secured by rolling,",
+    "cumulative to 2100. Rows = climate scenario; columns = budget (median-priced EAUs",
+    "per period). Rolling is the benchmark (0)."),
+  fig_value = paste(
+    "**Acquisition value by budget and policy.** Cumulative discounted duck-pairs secured",
+    "relative to the do-nothing baseline, 2020\u20132100, by climate scenario."),
+  tbl_over_baseline =
+    "**Value of acquisition policy over do-nothing baseline, by budget and scenario.**",
+  tbl_acquired =
+    "**EAUs acquired by 2100, by policy, budget and scenario.**",
+  fig_foresight = paste(
+    "**Rolling vs. myopic acquisition sets, by budget.** EAUs colored by which policy buys",
+    "them. Rows = climate scenario; columns = budget (median-priced EAUs per period).",
+    "Purple cells are acquired under both policies; blue cells only under the rolling",
+    "policy; orange cells are bought by the myopic policy but avoided by the rolling policy."),
+  tbl_convergence =
+    "**Solver convergence by budget and policy (all scenarios).**"
+)
+```
+
+
+We wanted to explore the role of budget in determining the relatively performance of the three acquisition policies, as well as the overall performance over the do-nothing baseline. I re-ran the model with a stricter budget constraint (2 median-priced EAUs acquired per period) and a more generous budget constraint (10 median-priced EAUs per period) under all climate scenarios, using the GCAM reference landcover scenario. 
+
+I found that across climate scenarios, a stricter budget constraint increased the performance gap between acquisition policies. When only 2 median-priced EAUs can be purchased per decision period, the rolling policy outperforms greedy/myopic policy by ~ 75%/25%; when 10 median-priced EAUs can be purchased per decision period, the rolling policy outperforms the greedy/myopic policy by only ~ 35%/~15%.
+
+**The value of foresight increases under a stricter budget, and declines under a more generous budget**. 
+
+
+```{r}
+#| label: tbl-bud-improvement
+#| tbl-cap: !expr bud_caps$tbl_improvement
+#| eval: !expr bud_ok
+df <- cbind(lead_cols(bh),
+            g_va = fmt_pairs(bh$greedy_va), m_va = fmt_pairs(bh$myopic_va),
+            r_va = fmt_pairs(bh$rolling_va),
+            rg_dp = fmt_pairs(bh$rg_dpairs), rg_pct = pct_or_dash(bh$rg_dpairs, bh$rg_pct),
+            rm_dp = fmt_pairs(bh$rm_dpairs), rm_pct = pct_or_dash(bh$rm_dpairs, bh$rm_pct))
+style_bud_table(df, n_lead = 2, lead_labs = c("Scenario", "Budget"),
+  groups = c(rep("Acquisition Value (pairs)", 3), rep("Rolling vs. Greedy", 2),
+             rep("Rolling vs. Myopic", 2)),
+  subs   = c("Greedy", "Myopic", "Rolling", DP, "% improvement", DP, "% improvement"),
+  col_colors = c(g_va = TXT_G, m_va = TXT_M, r_va = TXT_R,
+                 rg_dp = TXT_G, rg_pct = TXT_G, rm_dp = TXT_M, rm_pct = TXT_M),
+  footer_text = c(
+    "Acquisition Value = cumulative discounted duck-pairs secured relative to the do-nothing baseline, 2020\u20132100.",
+    paste0(DP, " = pairs secured through acquisition under rolling \u2212 greedy (or myopic)."),
+    "% improvement = \u0394pairs as % of greedy (or myopic).",
+    if (any(abs(c(bh$rg_dpairs, bh$rm_dpairs)) < 1))
+      "\u2014 = difference of <1 pair; % improvement not meaningful at this scale."))
+```
+
+{{< pagebreak >}}
+
+```{r}
+#| label: fig-bud-improvement
+#| fig-cap: !expr bud_caps$fig_improvement
+#| out-width: 100%
+#| eval: !expr bud_fig_ok("fig_bud_improvement.png")
+knitr::include_graphics(file.path(OUT_DIR, "fig_bud_improvement.png"))
+```
+
+
+{{< pagebreak >}}
+
+```{r}
+#| label: tbl-bud-shortfall
+#| tbl-cap: !expr bud_caps$tbl_shortfall
+#| eval: !expr bud_ok
+df <- cbind(lead_cols(bh),
+            g_va = fmt_pairs(bh$greedy_va), m_va = fmt_pairs(bh$myopic_va),
+            r_va = fmt_pairs(bh$rolling_va),
+            rg_dp = fmt_pairs(bh$rg_dpairs), rg_pct = pct_or_dash(bh$rg_dpairs, bh$rg_short_pct),
+            rm_dp = fmt_pairs(bh$rm_dpairs), rm_pct = pct_or_dash(bh$rm_dpairs, bh$rm_short_pct))
+style_bud_table(df, n_lead = 2, lead_labs = c("Scenario", "Budget"),
+  groups = c(rep("Acquisition Value (pairs)", 3), rep("Greedy vs. Rolling", 2),
+             rep("Myopic vs. Rolling", 2)),
+  subs   = c("Greedy", "Myopic", "Rolling", DP, "% shortfall", DP, "% shortfall"),
+  col_colors = c(g_va = TXT_G, m_va = TXT_M, r_va = TXT_R,
+                 rg_dp = TXT_G, rg_pct = TXT_G, rm_dp = TXT_M, rm_pct = TXT_M),
+  footer_text = c(
+    "Acquisition Value = cumulative discounted duck-pairs secured relative to the do-nothing baseline, 2020\u20132100.",
+    paste0(DP, " = secured through acquisition under rolling \u2212 greedy (or myopic)."),
+    "% shortfall = \u0394pairs, as % of rolling.",
+    if (any(abs(c(bh$rg_dpairs, bh$rm_dpairs)) < 1))
+      "\u2014 = difference of <1 pair; % shortfall not meaningful at this scale."))
+```
+
+{{< pagebreak >}}
+
+```{r}
+#| label: fig-bud-overtime
+#| fig-cap: !expr bud_caps$fig_overtime
+#| out-width: 100%
+#| eval: !expr bud_fig_ok("fig_bud_overtime.png")
+knitr::include_graphics(file.path(OUT_DIR, "fig_bud_overtime.png"))
+```
+
+{{< pagebreak >}}
+
+As expected, I found the a more generous budget constraint resulted in a higher conservation value over the do-nothing baseline. Note that even a doubling of the budget from the original constraint of nEAU=5 to nEAU=10 only resulted in a ~.6% or .7% improvement over the do-nothing baseline- but note that actual pairs conserved increases dramatically (in some cases more than tripling).  
+
+```{r}
+#| label: tbl-bud-over-baseline
+#| tbl-cap: !expr bud_caps$tbl_over_baseline
+#| eval: !expr bud_ok
+df <- cbind(lead_cols(bv_w),
+            g_pct = fmt_pct2(bv_w$pct_over_baseline_greedy),  g_dp = fmt_pairs(bv_w$value_added_greedy),
+            m_pct = fmt_pct2(bv_w$pct_over_baseline_myopic),  m_dp = fmt_pairs(bv_w$value_added_myopic),
+            r_pct = fmt_pct2(bv_w$pct_over_baseline_rolling), r_dp = fmt_pairs(bv_w$value_added_rolling))
+style_bud_table(df, n_lead = 2, lead_labs = c("Scenario", "Budget"),
+  groups = rep(c("Greedy", "Myopic", "Rolling"), each = 2),
+  subs   = rep(c("% over baseline", DP), 3),
+  col_colors = c(g_pct = TXT_G, g_dp = TXT_G, m_pct = TXT_M, m_dp = TXT_M,
+                 r_pct = TXT_R, r_dp = TXT_R),
+  footer_text = paste0(DP, " = cumulative discounted duck-pairs secured relative to the do-nothing baseline, 2020\u20132100."))
+```
+
+{{< pagebreak >}}
+
+```{r}
+#| label: fig-bud-foresight
+#| fig-cap: !expr bud_caps$fig_foresight
+#| out-width: 100%
+#| eval: !expr bud_fig_ok("map_bud_foresight.png")
+knitr::include_graphics(file.path(OUT_DIR, "map_bud_foresight.png"))
+```
+
+In a stricter budget regime, acquisitions are concentrated in the western PPR, where the most dense duck abundances are concentrated. In the more generous budget regimes, more parcels are acquired and more parcels in the western PPR are acquired, particularly under the rolling policy. 
+
+{{< pagebreak >}}
+
+```{r}
+#| output: asis
+if (!file.exists(file.path(OUT_DIR, "bud_metadata.json"))) cat(":::\n")
+```
+
+```{r}
+#| output: asis
+## Land-cover comparison: hidden unless script 10 has written its assets (cmp_metadata.json)
+if (!file.exists(file.path(OUT_DIR, "cmp_metadata.json"))) cat("::: {.content-hidden}\n")
+```
+
+<!-- ════════════════════════════════════════════════════════════════════════════
+ SECTION: land-cover comparison (formerly the child file 11b_landcover_comparison.qmd).
+ Shown under Updates ONLY IF the land-cover section of 10_results_assets.R has run
+ (cmp_metadata.json exists in this run's output_figs); otherwise the chunks around it
+ hide it. Uses objects defined in the setup chunk above (OUT_DIR, GREEN_HEADER,
+ SCEN_LAB1, fmt_pairs, DELTA, DP). Write the prose in the [ ] placeholders.
+════════════════════════════════════════════════════════════════════════════ -->
+
+### 10/21/2026: Land-cover scenario comparison (GCAM reference vs. BAU)
+
+```{r}
+#| label: cmp-setup
+#| include: false
+## Comparison assets are written by the land-cover section of 10_results_assets.R from this run
+## (base) and the run named by its COMPARE_RUN. Differences are alternative − base.
+cmeta <- tryCatch(
+  jsonlite::read_json(file.path(OUT_DIR, "cmp_metadata.json"), simplifyVector = TRUE),
+  error = function(e) NULL)
+cmp_ok      <- !is.null(cmeta) && file.exists(file.path(OUT_DIR, "cmp_value_added.csv"))
+cmp_risk_ok <- cmp_ok && file.exists(file.path(OUT_DIR, "cmp_risk_table.csv")) &&
+               file.exists(file.path(OUT_DIR, "fig_cmp_risk_box.png"))
+SB <- if (cmp_ok) cmeta$base_short else "base"
+SA <- if (cmp_ok) cmeta$alt_short  else "alternative"
+TH <- if (cmp_ok) cmeta$thresh_pp  else 2
+
+fmt_p1  <- function(x) ifelse(is.na(x), "\u2014", sprintf("%.1f%%", x))
+fmt_pp1 <- function(x) ifelse(is.na(x), "\u2014", sprintf("%+.1f", x))
+fmt_rk  <- function(x) ifelse(is.na(x), "\u2014", ifelse(x < 0.01, sprintf("%.3f%%", x), sprintf("%.2f%%", x)))
+
+## Table style for the comparison tables: the same look and the same "autofit" layout
+## as style_grouped_table in 11_results.qmd. Columns are sized to their header and
+## body text (autofit runs BEFORE the footer is added, so a long footnote cannot
+## widen a column), and tables with many columns use a smaller font so they fit
+## the page. Footnotes are kept short: in the PDF they do not wrap.
+style_cmp_table <- function(df, groups, subs, footer_text = NULL, bold_cells = NULL,
+                            first_lab = "Scenario", font_size = 8.5) {
+  rle_g <- rle(groups)
+  seps  <- c(1, head(1 + cumsum(rle_g$lengths), -1))
+  bd    <- officer::fp_border(color = "#dddddd", width = 1)
+  ft <- flextable(df)
+  ft <- set_header_labels(ft, values = setNames(as.list(c("", subs)), names(df)))
+  ft <- add_header_row(ft, top = TRUE, values = c(first_lab, rle_g$values),
+                       colwidths = c(1, rle_g$lengths))
+  ft <- merge_at(ft, i = 1:2, j = 1, part = "header")
+  ft <- bg(ft, part = "header", bg = GREEN_HEADER)
+  ft <- color(ft, part = "header", color = "white")
+  ft <- bold(ft, part = "header")
+  ft <- align(ft, align = "center", part = "all")
+  ft <- align(ft, j = 1, align = "left", part = "all")
+  ft <- valign(ft, j = 1, valign = "center", part = "header")
+  ft <- bold(ft, j = 1, part = "body")
+  if (nrow(df) > 1) ft <- bg(ft, i = seq(2, nrow(df), by = 2), bg = "#f5f5f2", part = "body")
+  for (bc in bold_cells) ft <- bold(ft,  i = bc[1], j = bc[2], part = "body")
+  for (bc in bold_cells) ft <- color(ft, i = bc[1], j = bc[2], color = "#B0413E", part = "body")
+  ft <- border_remove(ft)
+  ft <- hline(ft, i = 1, part = "header", border = officer::fp_border(color = "white", width = 1))
+  ft <- vline(ft, j = seps, border = bd, part = "header")
+  ft <- vline(ft, j = seps, border = bd, part = "body")
+  ft <- padding(ft, padding.top = 3, padding.bottom = 3, padding.left = 3,
+                padding.right = 3, part = "all")
+  ft <- fontsize(ft, size = font_size, part = "all")
+  ft <- autofit(ft)                      # header + body only: footer not added yet
+   wv <- dim(ft)$widths                                         # per-column widths (in)
+  ft <- width(ft, width = wv * min(1, TABLE_MAX_W / sum(wv)))  # shrink to fit the page
+  if (!is.null(footer_text)) {
+    ft <- add_footer_lines(ft, values = footer_text)
+    ft <- fontsize(ft, size = 7.5, part = "footer")
+    ft <- color(ft, color = "grey40", part = "footer")
+    ft <- align(ft, align = "left", part = "footer")
+  }
+  set_table_properties(ft, layout = "fixed")
+}
+
+## captions (edit here) ----------------------------------------------------------
+cap_cmp_headline <- paste0("Improvement of the rolling policy over greedy/myopic, ",
+                           SB, " vs. ", SA, " land cover.")
+cap_cmp_value    <- paste0("Acquisition value (cumulative discounted duck-pairs secured relative to the do-nothing baseline, ",
+                           "2020\u20132100), by policy and land-cover run. Note the absolute improvement of any acquisition policy, relative to do-nothing, in BAU vs GCAM.")
+cap_cmp_risk_fig <- paste0("**Per-period conversion risk across EAUs, by decade, emissions scenario and land-cover scenario. Note that conversion risk collapses mid-century in GCAM, but stays constant in BAU.** Grey = ",
+                           SB, "; red = ", SA, ". Box = median and IQR; diamond = mean; dash = maximum.")
+cap_cmp_risk_tbl <- paste0("**Per-period conversion risk across EAUs, by decade and emissions scenario** (",
+                           SB, " vs. ", SA, ").")
+```
+
+
+In order to explore the role of landcover trends and patterns on model results, I re-ran the model with another FOREsce projection (BAU). Both BAU and GCAM reference are considered to be likely scenarios in a world with no major agricultural or climate policy changes (as per the FORESce description):
+
+- BAU: "Based on an extrapolation of recent land-cover trends as derived from remote-sensing data. Overall trends were provided by 2001 to 2011 change in the National Land Cover Database, while change in crop types were extrapolated from 2008 to 2014 change in the Cropland Data Layer. Overall the scenario is marked by expansion of high-value traditional crops (corn, soybeans, cotton), with a concurrent decline in dryland wheat and some other lower-value crops."
+
+- GCAM: "Based on global-scale scenarios from the GCAM model, the "reference" scenario provides a likely landscape under a world without specific carbon or climate mitigation efforts. As such, it's another form of a "business-as-usual" scenario."
+
+I wanted to compare these to see how changes in landcover estimations might affect model results, and specifically to see if the BAU scenario contained higher conversion rates than the GCAM scenario; it was noticeable in the GCAM scenario that conversion rates declined markedly mid-century, and wanted to explore what effect that would have.
+
+I found that the policy ranking (rolling outperforms myopic which outperforms greedy) holds in both land-cover scenarios under both landcover projections. While the ranking holds, the magnitude of the performance gap varies between the landcover scenarios: the rolling policy still outperforms greedy and myopic in the BAU, but by substantially less than under the GCAM scenario.
+
+{{< pagebreak >}}
+
+```{r}
+#| label: tbl-cmp-headline
+#| tbl-cap: !expr cap_cmp_headline
+#| eval: !expr cmp_ok
+hd <- read_csv(file.path(OUT_DIR, "cmp_headline.csv"), show_col_types = FALSE)
+df <- data.frame(Scenario = unname(SCEN_LAB1[hd$scenario]),
+                 rg_b = fmt_p1(hd$rg_pct_base), rg_a = fmt_p1(hd$rg_pct_alt), rg_d = fmt_pp1(hd$rg_pct_diff),
+                 rm_b = fmt_p1(hd$rm_pct_base), rm_a = fmt_p1(hd$rm_pct_alt), rm_d = fmt_pp1(hd$rm_pct_diff),
+                 ord  = ifelse(hd$ranking_holds, "Yes", "NO"), check.names = FALSE)
+flags <- c(lapply(which(abs(hd$rg_pct_diff) > TH), function(i) c(i, 4)),
+           lapply(which(abs(hd$rm_pct_diff) > TH), function(i) c(i, 7)),
+           lapply(which(df$ord == "NO"),           function(i) c(i, 8)))
+style_cmp_table(df,
+  groups = c(rep("Rolling vs. Greedy", 3), rep("Rolling vs. Myopic", 3), "Ranking holds"),
+  subs   = c(SB, SA, paste0(DELTA, " pp"), SB, SA, paste0(DELTA, " pp"), "both runs"),
+  bold_cells = flags,
+  footer_text = c("% improvement = (rolling \u2212 comparison policy) as % of the comparison policy's value.",
+                  paste0(DELTA, " pp = ", SA, " \u2212 ", SB, ", in percentage points; red = larger than ", TH, " pp.")))
+```
+
+I believe this is driven by different patterns in conversion risk: under GCAM, conversion to cropland is concentrated in the first two decades and then flattens to nearly zero mid-century and never recovers. This has two effects: the overall value of any acquisition policy through 2100 as compared to a do-nothing baseline is relatively low (since conversion risk in most decades is near zero), and the greedy/myopic policy significantly under perform the rolling policy in early decades (since they assumes continued high conversion risk when in fact conversion risk collapses). 
+
+Under BAU, by contrast, the conversion risk is relatively stable across the entire study period. There is decadal variability, but there is no consistent mid-century collapse. This results in a reversal of the two effects: the overall value of any acquisition policy through 2100 as compared to a do-nothing baseline is higher; and greedy/myopic policy assumption of constant conversion risk is in fact pretty close to true. 
+
+
+```{r}
+#| label: fig-cmp-risk
+#| fig-cap: !expr cap_cmp_risk_fig
+#| out-width: 100%
+#| eval: !expr cmp_risk_ok
+knitr::include_graphics(file.path(OUT_DIR, "fig_cmp_risk_box.png"))
+```
+
+{{< pagebreak >}}
+
+
+```{r}
+#| label: tbl-cmp-value
+#| tbl-cap: !expr cap_cmp_value
+#| eval: !expr cmp_ok
+va <- read_csv(file.path(OUT_DIR, "cmp_value_added.csv"), show_col_types = FALSE)
+fmt_rel <- function(x) ifelse(is.na(x) | !is.finite(x), "\u2014", sprintf("%+.1f%%", x))
+df <- data.frame(Scenario = unname(SCEN_LAB1[va$scenario]),
+                 g_b = fmt_pairs(va$greedy_base),  g_a = fmt_pairs(va$greedy_alt),  g_d = fmt_rel(va$greedy_pct_chg),
+                 m_b = fmt_pairs(va$myopic_base),  m_a = fmt_pairs(va$myopic_alt),  m_d = fmt_rel(va$myopic_pct_chg),
+                 r_b = fmt_pairs(va$rolling_base), r_a = fmt_pairs(va$rolling_alt), r_d = fmt_rel(va$rolling_pct_chg),
+                 check.names = FALSE)
+style_cmp_table(df,
+  groups = rep(c("Greedy", "Myopic", "Rolling"), each = 3),
+  subs = rep(c(SB, SA, paste0(DELTA, "%")), 3),
+  font_size = 7.5,
+  footer_text = paste0(DELTA, "% = change in acquisition value, ", SA, " relative to ", SB, "."))
+```
+
+I think this comparison is an interesting way to show how the model can help us understand the value of time-dependent acquisition policies in different systems. My primary take away from this is that the trajectory of conversion risk is more important than actual scale of conversion risk for determining the value/utility of a time-dependent acquisition policy as compared to a traditional (greedy/myopic) policy. I don't know that we need to report BAU results alongside GCAM results, but perhaps include the comparison as a sensitivity analysis in supplementary materials?
+
+```{r}
+#| output: asis
+if (!file.exists(file.path(OUT_DIR, "cmp_metadata.json"))) cat(":::\n")
 ```
 
 {{< pagebreak >}}
@@ -800,7 +1409,7 @@ After talking with Owen, I updated the alignment to use window midpoints
 
 - "Obs" = mean 2007–2017 -\> 2012
 - "3059" = mean 2030–2059 -\> 2045
-- "7099" = mean 2070–2099 -\> 285
+- "7099" = mean 2070–2099 -\> 2085
 
 Notes: The 2020 baseline is produced by interpolating each RCP×GCM combo
 on its 2012→2045 segment and then averaging across the four combos into

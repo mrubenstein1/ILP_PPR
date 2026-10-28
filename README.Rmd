@@ -61,22 +61,22 @@ Quarto to render the results document. Run everything from the project root.
 2. **Budget sensitivity** (optional) — `Rscript 13_run_budget_sweep.R` re-runs `08` and
    `10` at budgets of 2, 5 and 10 median-priced EAUs per period, reusing the derived data
    from step 1 (land cover is not reprocessed). Each budget gets its own folder,
-   `runs/<LC_SCENARIO>_bXX/`. Then `Rscript 10c_results_assets_budget.R` builds the
-   cross-budget tables and figures. The budget-5 run reproduces the main run, and the
+   `runs/<LC_SCENARIO>_bXX/`. Then `Rscript 10_results_assets.R` (with `PPR_BUDGET` unset)
+   builds the cross-budget tables and figures. The budget-5 run reproduces the main run, and the
    sweep checks this. ~30–45 min per budget.
 3. **Land-cover comparison** (optional) — set `LC_SCENARIO <- "bau"` in `00_config.R`,
    run `Rscript 00_run_all.R`, set it back to `"gcam_ref"`, then run
-   `Rscript 10b_results_assets_landcover.R`.
+   `Rscript 10_results_assets.R`.
 4. **High-hazard run** (optional) — rescales conversion risk to a target annual rate
    (1.33%/yr, Rashford et al. 2011), reusing the main run's derived data (land cover is
    not reprocessed). From the project root, after step 1:
    `PPR_HAZARD=1.33 Rscript 14_build_hazard_panel.R`, then
    `PPR_HAZARD=1.33 Rscript 00_run_all.R 08` (outputs go to `runs/<LC_SCENARIO>_haz1p33/`).
-   Optionally run `PPR_HAZARD=1.33 Rscript 09_validation.R` once. Then, with `PPR_HAZARD`
-   unset, `Rscript 10d_results_assets_hazard.R` builds the comparison assets.
-5. **Results document** — `quarto render 11_results.qmd`. The hazard (`11d`), budget
-   (`11c`) and land-cover (`11b`) sections are included automatically when their assets
-   exist.
+   Optionally run `PPR_HAZARD=1.33 Rscript 09_validation.R` once. `15_run_hazard_sweep.R` runs these
+   steps for a series of rates. Then, with `PPR_HAZARD` unset, `Rscript 10_results_assets.R`
+   builds the hazard-sweep assets.
+5. **Results document** — `quarto render 11_results.qmd`. The hazard, budget and
+   land-cover sections under Updates are shown automatically when their assets exist.
 
 ## Input data
 
@@ -178,48 +178,31 @@ Quarto to render the results document. Run everything from the project root.
     `output_figs/`. No solver/`07` needed. The maps need only `ggplot2`; `terra`/`sf` are
     used solely for the optional WMD outline overlay (auto-skipped if absent). Toggle maps with `DRAW_MAPS`.
 
-10b. **`10b_results_assets_landcover`** — optional reporting script that compares two
-    complete pipeline runs: the base run set in `00_config.R` (normally `gcam_ref`) and
-    an alternative land-cover run (`COMPARE_RUN`, normally `bau`). Reads both runs'
-    `output_data/` results and `derived_data/data_panel.rds`, and writes comparison
-    tables (`cmp_headline.csv`, `cmp_value_added.csv`, `cmp_risk_table.csv`), a
-    conversion-risk figure (`fig_cmp_risk_box`) and `cmp_metadata.json` into the base
-    run's `output_figs/`. Run it only after both pipelines have finished, with
-    `00_config.R` set to the base run. No solver/`07` needed.
-
-10c. **`10c_results_assets_budget`** — optional reporting script that compares the budget
-    runs made by `13_run_budget_sweep` (every complete `runs/<LC_SCENARIO>_bXX/` folder;
-    each run's budget is read from its saved parameters). Writes tables
-    (`bud_headline.csv`, `bud_value_added.csv`, `bud_convergence.csv`), figures
-    (`fig_bud_improvement`, `fig_bud_value_added`, `fig_bud_overtime`), a map
-    (`map_bud_foresight`) and `bud_metadata.json` into the main run's `output_figs/`. Run
-    it with `PPR_BUDGET` unset. No solver/`07` needed.
-
-10d. **`10d_results_assets_hazard`** — optional reporting script that compares the main
-    run with the high-hazard run (`COMPARE_RUN`, normally `<LC_SCENARIO>_haz1p33`).
-    Writes tables (`haz_headline.csv`, `haz_value_added.csv`, `haz_overlap.csv`), a
-    conversion-risk figure (`fig_haz_risk_box`) and `haz_metadata.json` into the main
-    run's `output_figs/`, and warns if the main run's panel has changed since the scaled
-    panel was built. Run it with `PPR_HAZARD` and `PPR_BUDGET` unset. No solver/`07` needed.
+    At the end, three comparison sections (formerly the scripts `10b`–`10d`) write into
+    the main run's `output_figs/`. Each runs only in the canonical configuration
+    (`PPR_HAZARD` and `PPR_BUDGET` unset) and only when its input runs exist; otherwise it
+    is skipped with a message, so `10` still runs normally inside every budget and hazard
+    run. Rerun `Rscript 10_results_assets.R` after new comparison runs to refresh them.
+    - *Land-cover comparison* — this run vs the alternative land-cover run
+      (`COMPARE_RUN`, normally `bau`): `cmp_headline.csv`, `cmp_value_added.csv`,
+      `cmp_risk_table.csv`, `fig_cmp_risk_box`, `cmp_metadata.json`.
+    - *Budget sensitivity* — every complete `runs/<LC_SCENARIO>_bXX/` folder from
+      `13_run_budget_sweep` (each run's budget read from its saved parameters):
+      `bud_headline.csv`, `bud_value_added.csv`, `bud_convergence.csv`,
+      `fig_bud_improvement`, `fig_bud_value_added`, `fig_bud_overtime`,
+      `map_bud_foresight`, `bud_metadata.json`.
+    - *Hazard sweep* — the main run and every complete `runs/<LC_SCENARIO>_haz<tag>/`
+      folder from `15_run_hazard_sweep`: `haz_sweep.csv`, `fig_haz_sweep_pct`,
+      `fig_haz_sweep_pairs`, `fig_haz_sweep_risk_box`, `haz_sweep_metadata.json`; warns if
+      a hazard run was built from an older version of the main run's panel.
 
 11. **`11_results.qmd`** reports results from `10_results_assets`, with annotation/prose accompanying each figure/graph/map.
 
 
-11b. **`11b_landcover_comparison.qmd`** — child document holding the land-cover
-    comparison entry (prose, tables, figure) for the Updates section of `11_results.qmd`.
-    It is included automatically only if `10b_results_assets_landcover` has been run
-    (i.e., `cmp_metadata.json` exists); otherwise the entry is skipped. Not rendered
-    on its own: it relies on objects defined in `11_results.qmd`'s setup chunk.
-
-11c. **`11c_budget_sensitivity.qmd`** — child document holding the budget sensitivity
-    entry (prose, tables, figures, map) for the Updates section of `11_results.qmd`.
-    Included automatically only if `10c_results_assets_budget` has been run (i.e.,
-    `bud_metadata.json` exists). Not rendered on its own, for the same reason as `11b`.
-
-11d. **`11d_hazard_sensitivity.qmd`** — child document holding the high-hazard entry
-    (prose, tables, figure) for the Updates section of `11_results.qmd`. Included
-    automatically only if `10d_results_assets_hazard` has been run (i.e.,
-    `haz_metadata.json` exists). Not rendered on its own, for the same reason as `11b`.
+    Its Updates section holds the land-cover, budget and hazard entries (formerly the
+    child files `11b`–`11d`). Each is shown only if the matching comparison section of
+    `10` has run (`cmp_metadata.json`, `bud_metadata.json`, `haz_sweep_metadata.json`);
+    otherwise it is hidden.
 
 12. **`12_compare_runs.qmd`** — standalone document comparing the land-cover runs
     (GCAM reference vs. BAU).

@@ -31,14 +31,14 @@
 # logs/hazard_sweep/<RUN_ID>.log (models). Follow a run live with:
 #   tail -f logs/hazard_sweep/<RUN_ID>.log
 #
-# Then, with PPR_HAZARD unset:  Rscript 10e_results_assets_hazard_sweep.R
+# Then, with PPR_HAZARD unset:  Rscript 10_results_assets.R
 # Base R only: no packages needed to run this driver.
 # ══════════════════════════════════════════════════════════════════════════════
 
 # ── Settings ──────────────────────────────────────────────────────────────────
 # Target annual conversion rates (% per year), with the published estimates they
 # stand for. The canonical run (~0.17%/yr, habitat-weighted 2020 rate) is the
-# lowest point and needs no run. Edit freely; 10e reads the rates from the runs.
+# lowest point and needs no run. Edit freely; script 10 reads the rates from the runs.
 RATES <- c(
   0.28,   # Johnston 2013: wetland loss to row crops, Dakota PPR (NWI basis)
   0.40,   # Stephens et al. 2008: native grassland conversion, Missouri Coteau
@@ -199,5 +199,5 @@ for (r in RATES) {
 }
 Sys.unsetenv("PPR_HAZARD")
 
-message("\nNext (PPR_HAZARD unset):  Rscript 10e_results_assets_hazard_sweep.R")
+message("\nNext (PPR_HAZARD unset):  Rscript 10_results_assets.R")
 if (any(grepl("^FAILED", sweep_log$action))) quit(save = "no", status = 1)

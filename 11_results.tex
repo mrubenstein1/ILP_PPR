@@ -197,7 +197,7 @@
 \vspace{-2\baselineskip}
 
 
-\emph{Results generated 2026-10-20.}
+\emph{Results generated 2026-10-28.}
 
 \section{Project Overview}\label{project-overview}
 
@@ -281,13 +281,13 @@ stationary null).
 
 \section{Model Formulation}\label{model-formulation}
 
-\textbf{Decision model.} Let \(i \in \mathcal{I}\) index EAUs
-(\(|\mathcal{I}| = 879\)) and \(t \in \{0, \dots, T\}\) index decades (0
-= 2020, \(T = 8\) = 2100). For EAU \(i\) in period \(t\), let
-\(b_{i,t}\) be projected breeding duck pairs under a given scenario,
-\(\lambda_{i,t}\) the per-period probability that its suitable habitat
-is converted, and \(c_{i,t}\) the cost of acquisition (land value per
-hectare × EAU area, inflated at 2\% per year).
+\textbf{Decision model.} EAUs are indexed over \(i \in \mathcal{I}\) and
+\(t \in \{0, \dots, T\}\) index decades (0 = 2020, \(T = 8\) = 2100).
+For EAU \(i\) in period \(t\), \(b_{i,t}\) is the projected breeding
+duck pairs under a given scenario, \(\lambda_{i,t}\) is the per-period
+probability that its suitable habitat is converted, and \(c_{i,t}\) is
+the cost of acquisition (land value per hectare × EAU area, inflated at
+2\% per year).
 
 \emph{Survival.} If EAU \(i\) is not acquired, the probability that it
 remains unconverted through period \(t\) is
@@ -295,10 +295,10 @@ remains unconverted through period \(t\) is
 \[S_{i,0} = 1, \qquad S_{i,t} = \prod_{s=0}^{t-1} \left(1 - \lambda_{i,s}\right), \quad t \ge 1.\]
 
 where for a given EAU, its per-decade survival probability is defined as
-1-\(\lambda_{i,t}\) (i.e., the conversion hazard risk) and the
-cumulative survival probability in time \(t\) is the product of each
-decade's survival probability from 2020 through the decade just before
-\(t\) (\(t\)-1).
+1-\(\lambda_{i,t}\) (i.e., the survival probability) and the cumulative
+survival probability in time \(t\) is the product of each decade's
+survival probability from 2020 through the decade just before \(t\)
+(\(t\)-1).
 
 \emph{Acquisition value.} The conservation value of acquiring an EAU is
 calculated as the expected loss its acquisition prevents. Acquiring EAU
@@ -307,16 +307,15 @@ calculated as the expected loss its acquisition prevents. Acquiring EAU
 
 \[V_{i,\tau} = \sum_{t=\tau}^{T} \delta^{t}\, b_{i,t} \left(1 - S_{i,t}\right),\]
 where \(V_{i,\tau}\) is the value of acquiring parcel \(i\) in period
-\(\tau\), expressed as the total time-discounted sum of duck-pairs
-across the landscape from \(\tau\) through 2100; \(\delta\) is the
-decadal discount factor (0.95); \(b_{i,t}\) is the projected benefit
-(duck pairs) in parcel \(i\) in period \(t\) under a given scenario; and
-\(S_{i,t}\) is the probability that parcel \(i\) survives (i.e., remains
-unconverted) through period \(t\) if it is not acquired, so that
-\(1 - S_{i,t}\) is the probability of conversion. Total landscape value
-under any acquisition schedule equals the value of doing nothing plus
-\(\sum_i V_{i,\tau_i}\) (i.e., the sum of acquisition value), summed
-over all acquired parcel.
+\(\tau\), expressed as the total time-discounted sum of duck-pairs from
+\(\tau\) through 2100; \(\delta\) is the decadal discount factor (0.95);
+\(b_{i,t}\) is the projected benefit (duck pairs) in parcel \(i\) in
+period \(t\) under a given scenario; and \(S_{i,t}\) is the probability
+that parcel \(i\) survives (i.e., remains unconverted) through period
+\(t\) if it is not acquired, so that \(1 - S_{i,t}\) is the probability
+of conversion. Total landscape value under any acquisition schedule
+equals the value of doing nothing plus \(\sum_i V_{i,\tau_i}\) (i.e.,
+the sum of acquisition value), summed over all acquired parcel.
 
 All unacquired parcels are treated as available (i.e.~subject to
 conversion risk) at each re-solve; conversion does not remove parcels
@@ -325,14 +324,21 @@ the objective. Acquisition removes this weight and counts the full
 (time-discounted) value; unacquired parcels retain only their
 survival-discounted value.
 
-\emph{Optimization.} Let \(x_{i,t} \in \{0,1\}\) equal 1 if EAU \(i\) is
-acquired in period \(t\), and let \(\mathcal{A}_\tau\) be the set of
+\emph{Optimization.} if EAU \(i\) is acquired in period \(t\),
+\(x_{i,t} \in \{0,1\}\) equals 1; \(\mathcal{A}_\tau\) is the set of
 EAUs not yet acquired at the start of period \(\tau\). At each decision
-period \(\tau\), the ILP policies solve
+period \(\tau\), the ILP policies solves to maximize V (acquisition
+value) according to:
 
 \[\max_{x} \; \sum_{i \in \mathcal{A}_\tau} \sum_{t=\tau}^{T} \hat{V}_{i,t}\, x_{i,t}\]
+where \(\hat{V}\) is the belief about expected value (i.e., discounted
+duck pairs saved). The ILP policies differ only in \(\hat{V}\). For the
+rolling-horizon policy, \(\hat{V}_{i,t} = V_{i,t}\), computed from the
+projected trajectories of \(b\) and \(\lambda\). For the myopic policy,
+benefit and hazard are held attheir period-\(\tau\) values for the whole
+horizon, so the coefficients are recomputed at every solve.
 
-subject to
+In all policies, maximization of expected benefit is subject to:
 
 \[\begin{aligned}
 \sum_{t=\tau}^{T} x_{i,t} &\le 1 && \forall\, i \in \mathcal{A}_\tau && \text{(each EAU acquired at most once)} \\
@@ -341,18 +347,10 @@ x_{i,t} &\in \{0,1\}.
 \end{aligned}\]
 
 Only the period-\(\tau\) decisions are carried out. Then
-\(\mathcal{A}_{\tau+1} = \mathcal{A}_\tau \setminus \{i : x_{i,\tau} = 1\}\)
+\(\mathcal{A}_{\tau+1}\) the set of available parcels is re-evaluated
 and the problem is solved again. Conversion does not remove parcels from
 \(\mathcal{A}_\tau\); it enters only through the weight
 \((1 - S_{i,t})\).
-
-The policies differ only in \(\hat{V}\). For the rolling-horizon policy,
-\(\hat{V}_{i,t} = V_{i,t}\), computed from the projected trajectories of
-\(b\) and \(\lambda\). For the myopic policy, benefit and hazard are
-held at their period-\(\tau\) values for the whole horizon, so the
-coefficients are recomputed at every solve:
-
-\[\hat{V}^{(\tau)}_{i,t} = \sum_{s=t}^{T} \delta^{s}\, b_{i,\tau} \left[1 - \left(1 - \lambda_{i,\tau}\right)^{s}\right].\]
 
 \emph{Budget.} The budget for each period is
 
@@ -486,8 +484,8 @@ non-stationarity.
 \textbf{My interpretation: A non-stationary, climate-aware acquisition
 policy could deliver a \textasciitilde50\% improvement in conservation
 outcomes as compared to the greedy (i.e., status quo) acquisition policy
-in use today, potentially protecting an additional 37,000-69,000 duck
-pairs by 2100}.
+in use today, potentially protecting an additional 37,000-69,000 of
+cumulative duck pairs by 2100}.
 
 \global\setlength{\Oldarrayrulewidth}{\arrayrulewidth}
 
@@ -635,7 +633,7 @@ greedy policy falls \textasciitilde33-36\% short of rolling.
 \textbf{My interpretation: Current use of acquisition policies that
 assume environmental stationarity fall short of an optimal acquisition
 policy by \textasciitilde30\%, failing to secure an additional
-37,000-69,000 potential duck pairs by 2100}.
+37,000-69,000 potential cumulative duck pairs by 2100}.
 
 \global\setlength{\Oldarrayrulewidth}{\arrayrulewidth}
 
@@ -825,7 +823,7 @@ measure of habitat erosion standing in for habitat conversion
 probability). It may also be related to a relatively conservative budget
 parameter (only \textasciitilde60-70 EAUs are acquired in most
 scenarios). That said, these numbers might not be that different from
-real world estimates: Kemnick et al 2023 estimated that the program
+real world estimates: Kemink et al 2023 estimated that the program
 impact for SWAP was ``an avoided loss between 0.00\% and 0.02\% of the
 carrying capacity for broods and breeding waterfowl from 2008--2017.''
 
@@ -1001,6 +999,8 @@ declines as conversion risk rises.
 
 \needspace{18\baselineskip}   % keep this whole table on one page (moves to next page if it won't fit)
 
+\newpage{}
+
 \global\setlength{\Oldarrayrulewidth}{\arrayrulewidth}
 
 \global\setlength{\Oldtabcolsep}{\tabcolsep}
@@ -1172,7 +1172,7 @@ habitat conversion in native temperate grasslands.'' Conservation
 biology 22.5 (2008): 1320-1330. 0.4\% annualized probability of
 conversion from grassland to cropland, 1989-2003
 
-Kemnick et al 2023: Kemink, Kaylan M., et al.~``Assessing prioritization
+Kemink et al 2023: Kemink, Kaylan M., et al.~``Assessing prioritization
 measures for a private land conservation program in the US Prairie
 Pothole Region.'' Conservation Science and Practice 5.7 (2023): e12939.
 0.57\% estimated upper bound for wetland drainage rates.
@@ -1890,7 +1890,7 @@ rolling policy.}
 \end{figure}%
 
 In a stricter budget regime, acquisitions are concentrated in the
-eastern PPR, where the most dense duck abundances are concentrated. In
+western PPR, where the most dense duck abundances are concentrated. In
 the more generous budget regimes, more parcels are acquired and more
 parcels in the western PPR are acquired, particularly under the rolling
 policy.
@@ -2363,7 +2363,7 @@ midpoints]
 \item
   ``3059'' = mean 2030--2059 -\textgreater{} 2045
 \item
-  ``7099'' = mean 2070--2099 -\textgreater{} 285
+  ``7099'' = mean 2070--2099 -\textgreater{} 2085
 \end{itemize}
 
 Notes: The 2020 baseline is produced by interpolating each RCP×GCM combo
