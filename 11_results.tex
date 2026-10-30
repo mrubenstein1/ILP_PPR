@@ -284,8 +284,8 @@ stationary null).
 \textbf{Decision model.} EAUs are indexed over \(i \in \mathcal{I}\) and
 \(t \in \{0, \dots, T\}\) index decades (0 = 2020, \(T = 8\) = 2100).
 For EAU \(i\) in period \(t\), \(b_{i,t}\) is the projected breeding
-duck pairs under a given scenario, \(\lambda_{i,t}\) is the per-period
-probability that its suitable habitat is converted, and \(c_{i,t}\) is
+duck pairs under a given scenario; \(\lambda_{i,t}\) is the per-period
+probability that its suitable habitat is converted; and \(c_{i,t}\) is
 the cost of acquisition (land value per hectare × EAU area, inflated at
 2\% per year).
 
@@ -295,10 +295,9 @@ remains unconverted through period \(t\) is
 \[S_{i,0} = 1, \qquad S_{i,t} = \prod_{s=0}^{t-1} \left(1 - \lambda_{i,s}\right), \quad t \ge 1.\]
 
 where for a given EAU, its per-decade survival probability is defined as
-1-\(\lambda_{i,t}\) (i.e., the survival probability) and the cumulative
-survival probability in time \(t\) is the product of each decade's
-survival probability from 2020 through the decade just before \(t\)
-(\(t\)-1).
+1-\(\lambda_{i,t}\) and the cumulative survival probability in time
+\(t\) is the product of each decade's survival probability from 2020
+through the decade just before \(t\) (\(t\)-1).
 
 \emph{Acquisition value.} The conservation value of acquiring an EAU is
 calculated as the expected loss its acquisition prevents. Acquiring EAU
@@ -324,21 +323,40 @@ the objective. Acquisition removes this weight and counts the full
 (time-discounted) value; unacquired parcels retain only their
 survival-discounted value.
 
-\emph{Optimization.} if EAU \(i\) is acquired in period \(t\),
-\(x_{i,t} \in \{0,1\}\) equals 1; \(\mathcal{A}_\tau\) is the set of
-EAUs not yet acquired at the start of period \(\tau\). At each decision
-period \(\tau\), the ILP policies solves to maximize V (acquisition
-value) according to:
+\emph{Greedy policy.} The greedy policy does not solve an optimization
+problem. At each decision period \(\tau\), it ranks every available EAU
+\(i \in \mathcal{A}_\tau\) by its current benefit-to-cost ratio,
+
+\[r_{i,\tau} = \frac{b_{i,\tau}}{c_{i,\tau}},\]
+
+the number of duck pairs per dollar today. It then works down the list
+from highest to lowest ratio. It buys each EAU whose cost fits within
+the budget remaining in period \(\tau\) and skips any that doesn't fit.
+It stops when it reaches the end of the list. The greedy policy ignores
+conversion risk, since \(\lambda\) never enters the ranking. It ignores
+the future, because it considers only period \(\tau\) and plans no later
+purchases. And it doesn't search for the best combination within the
+period: ranking by ratio can leave a better-value set of parcels
+unpurchased. Greedy represents a common status-quo approach to
+prioritizing acquisitions: buy the most habitat per dollar available
+now.
+
+\emph{Optimization.} The rolling and myopic policies use an ILP
+approach, employing a Gurobi solver. If EAU \(i\) is acquired in period
+\(t\), then \(x_{i,t} \in \{0,1\}\) equals 1; \(\mathcal{A}_\tau\) is
+the set of EAUs not yet acquired at the start of period \(\tau\). At
+each decision period \(\tau\), the ILP policies solves to maximize V
+(acquisition value) according to:
 
 \[\max_{x} \; \sum_{i \in \mathcal{A}_\tau} \sum_{t=\tau}^{T} \hat{V}_{i,t}\, x_{i,t}\]
 where \(\hat{V}\) is the belief about expected value (i.e., discounted
 duck pairs saved). The ILP policies differ only in \(\hat{V}\). For the
 rolling-horizon policy, \(\hat{V}_{i,t} = V_{i,t}\), computed from the
 projected trajectories of \(b\) and \(\lambda\). For the myopic policy,
-benefit and hazard are held attheir period-\(\tau\) values for the whole
-horizon, so the coefficients are recomputed at every solve.
+benefit and hazard are held at their period-\(\tau\) values for the
+whole horizon, so the coefficients are recomputed at every solve.
 
-In all policies, maximization of expected benefit is subject to:
+In both policies, maximization of expected benefit is subject to:
 
 \[\begin{aligned}
 \sum_{t=\tau}^{T} x_{i,t} &\le 1 && \forall\, i \in \mathcal{A}_\tau && \text{(each EAU acquired at most once)} \\
@@ -347,9 +365,9 @@ x_{i,t} &\in \{0,1\}.
 \end{aligned}\]
 
 Only the period-\(\tau\) decisions are carried out. Then
-\(\mathcal{A}_{\tau+1}\) the set of available parcels is re-evaluated
-and the problem is solved again. Conversion does not remove parcels from
-\(\mathcal{A}_\tau\); it enters only through the weight
+\(\mathcal{A}_{\tau+1}\) (the current set of available parcels) is
+re-evaluated and the problem is solved again. Conversion does not remove
+parcels from \(\mathcal{A}_\tau\); it enters only through the weight
 \((1 - S_{i,t})\).
 
 \emph{Budget.} The budget for each period is
