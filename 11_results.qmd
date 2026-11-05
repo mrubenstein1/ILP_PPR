@@ -9,7 +9,7 @@ format:
     tbl-cap-location: top
     embed-resources: true        # single, portable, production-ready HTML file
     theme: cosmo
-  # docx: default                # uncomment to ALSO render Word (no LaTeX needed)
+   docx: default                # uncomment to ALSO render Word (no LaTeX needed)
   pdf:
     keep-tex: true
     fig-pos: 'H'                 # PIN figures where they're written (stops them floating away)
