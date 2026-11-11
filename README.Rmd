@@ -32,29 +32,43 @@ The three models acquire land period by period (decadal steps, 2020–2100) unde
 - **Rolling-horizon ILP** — same structure, but uses the true projected trajectories. The
   foresighted benchmark.
 
-The spatial unit is the **EAU** (Equal Area Unit, ~342 km²). After dropping 4 Wetland
-Management Districts (due to either lack of landcover data, or low confidence in 
-hydrological modeling), the analysis uses **879 EAUs across 20 WMDs**, over **9 decadal
-periods** and **5 scenarios** (RCP 4.5/8.5 × wet/dry, plus a stationary null).
+The spatial unit is the **EAU** (Equal Area Unit, ~342 km²). Roughly 1,200 EAUs are
+gridded across the 24 Wetland Management Districts (WMDs), and 1,169 of them have FOREsce
+land-cover coverage. Four WMDs are then dropped in script `04`: Benton Lake, Bowdoin and
+Northeast Montana (low confidence in hydrological modeling) and Fergus Falls (insufficient
+land-cover coverage). The analysis therefore uses **879 EAUs across 20 WMDs**, over
+**9 decadal periods** and **5 scenarios** (RCP 4.5/8.5 × wet/dry, plus a stationary null).
 
-The main (canonical) results use the FOREsce GCAM Reference land-cover scenario and a
-budget of 5 median-priced EAUs per period. Two sensitivity analyses are built into the
-workflow: an alternative land-cover scenario (FOREsce BAU) and the size of the budget
-(2, 5 and 10 median-priced EAUs per period).
+The main results use the FOREsce GCAM Reference land-cover scenario, a budget
+of 5 median-priced EAUs per period, and the conversion hazard derived from the land-cover
+projections. Three sensitivity analyses are built into
+the workflow:
 
+- **Land cover** — an alternative land-cover scenario (FOREsce BAU).
+- **Budget** — 2, 5 and 10 median-priced EAUs per period.
+- **Conversion hazard** — the hazard rescaled to a series of published annual conversion
+  rates (0.28, 0.40, 0.57, 0.95 and 1.33%/yr), with the canonical run as the lowest point.
+
+## Requirements
+
+- **R** with the following packages, checked by `00_setup.R`:
+    - core (required): `dplyr`, `tidyr`, `readr`, `stringr`, `purrr`, `ggplot2`,
+      `scales`, `Matrix`, `jsonlite`;
+    - spatial: `terra`, `sf` (required by `01`, `02`, `06`; optional for `10`, where they
+      are used only for the WMD outline overlay on maps);
+    - reporting: `flextable`, `knitr` (used by `11_results.qmd`).
+- The native **Gurobi** R package with an active (academic) license, for `07`–`09`.
+- **Quarto** to render `11_results.qmd`.
 
 ## How to run
-
-Requires R with the native **Gurobi** R package and an active (academic) license, and
-Quarto to render the results document. Run everything from the project root.
 
 1. **Main run** — `Rscript 00_run_all.R` runs the data pipeline (`01`–`06`), the models
    (`08`) and the reporting assets (`10`) for the land-cover scenario set in
    `00_config.R` (normally `gcam_ref`). Outputs go to `runs/<LC_SCENARIO>/`. Leave the
-   `PPR_BUDGET` environment variable unset for this run.
+   `PPR_BUDGET` and `PPR_HAZARD` environment variables unset for this run.
     - Part of the pipeline can be run with `Rscript 00_run_all.R 08` (from `08` onward)
-      or `Rscript 00_run_all.R 03 06` (a range). `02` is slow, so avoid re-running it
-      unless the land-cover inputs change.
+      or `Rscript 00_run_all.R 03 06` (a range).
+    - `02` takes about 60–75 min.
     - `09_validation.R` certifies the formulation (P1–P5). It is skipped by default; set
       `RUN_VALIDATION <- TRUE` in `00_run_all.R` (or run it directly) when the formulation
       changes. It does *not* need to be re-run every time `08` is run.
@@ -62,21 +76,25 @@ Quarto to render the results document. Run everything from the project root.
    `10` at budgets of 2, 5 and 10 median-priced EAUs per period, reusing the derived data
    from step 1 (land cover is not reprocessed). Each budget gets its own folder,
    `runs/<LC_SCENARIO>_bXX/`. Then `Rscript 10_results_assets.R` (with `PPR_BUDGET` unset)
-   builds the cross-budget tables and figures. The budget-5 run reproduces the main run, and the
-   sweep checks this. ~30–45 min per budget.
+   builds the cross-budget tables and figures. The budget-5 run reproduces the main run, and
+   the sweep checks this. ~30–45 min per budget.
 3. **Land-cover comparison** (optional) — set `LC_SCENARIO <- "bau"` in `00_config.R`,
    run `Rscript 00_run_all.R`, set it back to `"gcam_ref"`, then run
    `Rscript 10_results_assets.R`.
-4. **High-hazard run** (optional) — rescales conversion risk to a target annual rate
-   (1.33%/yr, Rashford et al. 2011), reusing the main run's derived data (land cover is
-   not reprocessed). From the project root, after step 1:
-   `PPR_HAZARD=1.33 Rscript 14_build_hazard_panel.R`, then
-   `PPR_HAZARD=1.33 Rscript 00_run_all.R 08` (outputs go to `runs/<LC_SCENARIO>_haz1p33/`).
-   Optionally run `PPR_HAZARD=1.33 Rscript 09_validation.R` once. `15_run_hazard_sweep.R` runs these
-   steps for a series of rates. Then, with `PPR_HAZARD` unset, `Rscript 10_results_assets.R`
-   builds the hazard-sweep assets.
-5. **Results document** — `quarto render 11_results.qmd`. The hazard, budget and
-   land-cover sections under Updates are shown automatically when their assets exist.
+4. **Conversion-hazard sensitivity** (optional) — after step 1,
+   `Rscript 15_run_hazard_sweep.R` runs the hazard sweep. For each target annual
+   conversion rate it builds a rescaled panel (`14`) and then runs `08` and `10`, in its
+   own folder, `runs/<LC_SCENARIO>_haz<tag>/` (e.g. `_haz1p33` for 1.33%/yr). Land cover
+   is not reprocessed. Then, with `PPR_HAZARD` unset, `Rscript 10_results_assets.R` builds
+   the hazard-sweep assets.
+    - A single rate can be run by hand with
+      `PPR_HAZARD=1.33 Rscript 14_build_hazard_panel.R` followed by
+      `PPR_HAZARD=1.33 Rscript 00_run_all.R 08`. Optionally run
+      `PPR_HAZARD=1.33 Rscript 09_validation.R` once.
+    - `PPR_HAZARD` and `PPR_BUDGET` cannot be combined; hazard runs use the canonical
+      budget.
+5. **Results document** — with `PPR_BUDGET` and `PPR_HAZARD` unset, run
+   `quarto render 11_results.qmd`. 
 
 ## Input data
 
@@ -99,64 +117,52 @@ Quarto to render the results document. Run everything from the project root.
 
 - **`00_config`** — single source of run settings: land-cover scenario (`LC_SCENARIO`),
   budget (`BUDGET_EAUS_PER_PERIOD`, canonical 5; set from the `PPR_BUDGET` environment
-  variable for budget runs), run IDs and folder paths. No packages are loaded here.
+  variable for budget runs), conversion-hazard target (`PPR_HAZARD`, for hazard runs), run
+  IDs and folder paths.
 - **`00_setup`** — loads packages, sources `00_config`, and creates the run folders.
-- **`00_run_all`** — runs the pipeline in order (see How to run). Refuses to re-run
-  `01`–`06` for a budget run.
+- **`00_run_all`** — runs the pipeline in order (see How to run), each script in a fresh R
+  session. Refuses to re-run `01`–`06` for a budget or hazard run.
 - **`13_run_budget_sweep`** — budget sensitivity driver: runs `08` and `10` for each
   budget, skips budgets already complete, logs each run to `logs/budget_sweep/`, and checks
-  the budget-5 run against the main run. Options: `--dry-run`, `--force`, or budgets as
-  arguments (e.g. `Rscript 13_run_budget_sweep.R 3 7`).
+  the budget-5 run against the main run. 
+- **`15_run_hazard_sweep`** — conversion-hazard sensitivity driver: for each rate in
+  `RATES` (0.28, 0.40, 0.57, 0.95, 1.33%/yr, each tied to a published estimate), builds
+  the rescaled panel with `14`, then runs `08` and `10`. 
 
 **Data pipeline:**
 
-1. **`01_create_EAUs`** — grids the WMD shapefile into EAUs; builds an EAU$\leftrightarrow$WMD lookup
-   (both in `runs/common/`).
+1. **`01_create_EAUs`** — grids the WMD shapefile into EAUs and builds an
+   EAU$\leftrightarrow$WMD lookup. Writes `wmd_raster_equal_area.tif`,
+   `eau_wmd_lookup.{rds,csv}` and `wmd_summary.csv` to `runs/common/`, shared by all runs.
 2. **`02_EAU_prop_suitable`** — proportion of suitable habitat per EAU from USGS FOREsce
-   land-cover projections, over time and by RCP, plus gross habitat loss on unprotected
-   land (PAD-US 4.1, GAP 1–3 masked). (Full resampling run ~6–10 min.)
+   land-cover projections, over time and by RCP (resampling section, ~8 min), plus gross
+   habitat loss on unprotected land (flow pass at native 30 m resolution, ~60–75 min).
+   The PAD-US 4.1 protected-area mask (GAP 1–3) is applied only to the gross-loss
+   calculation used for the conversion hazard; benefit allocation within WMDs uses the
+   unmasked land cover.
 3. **`03_create_data_panel`** — assembles the long-format data panel (EAU × year × RCP ×
    GCM), including wet/dry duplication and the stationary scenario. Land cover is joined
-   to EAUs by raster cell (`cell_id`), not by row order.
+   to EAUs by raster cell (`cell_id`), not by row order. Also translates the gross flows
+   from `02` to EAUs (`eau_flows.rds`).
 4. **`04_benefit_data`** — waterfowl-abundance benefit, interpolated to decadal steps
    (benefit windows anchored at their midpoints: 2012, 2045, 2085) and distributed within
    WMDs by suitable habitat. **Drops the 4 excluded WMDs** (→ 879 EAUs).
-5. **`05_risk_of_loss`** — conversion-risk hazard, a gross suitable habitat loss (i.e., habitat erosion
-   proxy) on unprotected habitat, with a small background floor $\varepsilon$. 
-6. **`06_cost_data`** — acquisition cost per EAU (Nolte 2020 FMV; 2%/yr inflation).
-
-**Data Panel Produced via Data Pipeline:**
-
-## Variables
-
-| Variable | Type | Description |
-|-----|----|------------------|
-| `eau_id` | integer | Unique EAU identifier. Assigned in script 01 by re-indexing valid raster cells 1:N, sorted by WMD (alphabetical) then original cell number. Stable across all scripts. |
-| `wmd_id` | character | Name of the Wetland Management District containing the EAU centroid. 20 distinct values after exclusions. |
-| `year` | integer | Decision time step: 2020 (baseline) and each decade 2030–2100. Nine distinct values. |
-| `rcp` | character | Emissions scenario: `"45"`, `"85"`, `"baseline"` (2020 only), or `"stationary"` (no-change counterfactual). |
-| `gcm` | character | Climate model variant: `"wet"`, `"dry"`, `"baseline"`, or `"stationary"`. Note that `prop_suitable` does not vary by `gcm` — only the benefit data are GCM-specific. |
-| `prop_suitable` | double | Proportion (0–1) of the EAU classified as suitable habitat. |
-| `abs_abundance` | double | WMD-level total duck abundance for that year and scenario, repeated across every EAU in the WMD. |
-| `scaled_abundance` | double | EAU-level share of `abs_abundance`, allocated by habitat area. The benefit term used in the ILP. |
-| `eau_row` | double | Internal row-order index used to align the land cover matrices to the EAU lookup table. `NA` for 2020 and stationary rows. Artifact of construction — not for analytical use. |
-| `total_prop_suitable` | double | Sum of `prop_suitable` across all EAUs within the WMD × year × `rcp` × `gcm` group. Denominator for `habitat_share`. |
-| `habitat_share` | double | `prop_suitable / total_prop_suitable`; the EAU's fraction of its WMD's suitable habitat in that scenario-year. `NA` where the WMD total is 0. |
-| `trans_prob` | double | Per-period risk of habitat loss (transition probability), bounded [0, 1]. |
-| `cost` | double | Estimated acquisition cost of the EAU in nominal USD for that decision year. Scenario-invariant. |
-| `cell_id` | integer | Raster cell number in the EAU grid — the permanent by-place key linking each EAU to its location. Used to join land-cover data to the panel by position on the ground rather than by row order. `NA` for 2020 baseline and stationary rows, which are constructed from `eau_id` after the land-cover join and never carry the cell key. |
-
+5. **`05_risk_of_loss`** — conversion-risk hazard: gross suitable habitat loss on
+   unprotected habitat (i.e., a habitat erosion proxy), with a background floor
+   $\varepsilon$. By default $\varepsilon$ is one tenth of the smallest positive loss in
+   the data; it can be set by hand with `epsilon_override`.
+6. **`06_cost_data`** — acquisition cost per EAU (Nolte 2020 FMV, vacant land; 2%/yr
+   inflation from 2017 dollars). Writes the final `data_panel.rds`.
 
 **Modeling core:**
 
 7. **`07_ilp_core`** — shared engine sourced by `08` and `09`: scenario-matrix assembly,
    survival/value/budget functions, the Gurobi solver wrapper, the three policies, and
    evaluation. Solver settings (a 60 s per-solve time cap, threads, seed, output) and the
-   **spend-down** block (`SPEND_DOWN_MODE`, the value-first/full-budget-deployment tiebreak)
-   live in parameter blocks near the top.
-    - Temporal discount factor lives here: defined as 0.95 per decade
-    - Spend down mode lives here: Budget deployment is controlled by `SPEND_DOWN_MODE` 
-   (default `"spend"` forces the model to exhaust the budget each time period).
+   **spend-down** block live in parameter blocks near the top.
+    - Temporal discount factor lives here: defined as 0.95 per decade.
+    - Spend down mode lives here: budget deployment is controlled by `SPEND_DOWN_MODE`
+      (default `"spend"` forces the model to exhaust the budget each time period).
     - Budget per period = `BUDGET_EAUS_PER_PERIOD` × the median EAU cost in that period
       (`make_budget()`). The number of EAUs is set in `00_config`, not here.
 8. **`08_run_models`** — driver: runs the three models on all scenarios, scores each
@@ -165,20 +171,29 @@ Quarto to render the results document. Run everything from the project root.
    (`acquisition_schedule_spatial.csv`, also embedded in `model_results.rds`). The schedule
    join reads `runs/common/eau_wmd_lookup.rds`; if absent it warns and writes the schedule
    without coordinates rather than failing.
-    - option to run model as "reproducible" lives here. Run single-thread + seeded
-   (`REPRODUCIBLE <- TRUE`) for bit-reproducible reported numbers *and* a stable map
-   footprint. 
-9. **`09_validation`** — correctness suite (P1–P5). Formulation tests run with spend-down off; the ordering test runs in the
-   active mode.
+    - `REPRODUCIBLE <- TRUE` is the default: the solver runs single-threaded and seeded,
+      for bit-reproducible reported numbers *and* a stable map footprint. Set it to
+      `FALSE` for faster multi-threaded runs.
+9. **`09_validation`** — correctness suite (P1–P5). Formulation tests run with spend-down
+   off; the ordering test runs in the active mode.
 
 **Reporting / mapping:**
 
 10. **`10_results_assets`** — single pure-reader reporting script: builds results tables
-    and figures (`ggplot2`/`flextable`) and maps from `08`'s saved CSVs into
-    `output_figs/`. No solver/`07` needed. The maps need only `ggplot2`; `terra`/`sf` are
-    used solely for the optional WMD outline overlay (auto-skipped if absent). Toggle maps with `DRAW_MAPS`.
+    (as tidy CSVs of raw numbers), figures and maps from `08`'s saved outputs into
+    `output_figs/`. Figures are saved as PNG and PDF. No solver/`07` needed. The maps need
+    only `ggplot2`; `terra`/`sf` are used solely for the optional WMD outline overlay
+    (auto-skipped if absent). Toggle maps with `DRAW_MAPS`. Per-run assets:
+    - *Tables*: `table_rolling_improvement.csv`, `table_over_baseline.csv`.
+    - *Figures*: `overtime_gap`, `decline`.
+    - *Descriptive summary of model inputs* (read from the data panel, so they render
+      even before any model has run): `fig_benefit_ribbon`, `map_benefit_2020_2100`,
+      `map_cost_binned`, `fig_risk_box`.
+    - *Acquisition maps*: `foresight_difference`, `prevented_loss_diff`.
+    - *Metadata*: `run_metadata.json` (generation date and land-cover label, used to stamp
+      the results document).
 
-    At the end, three comparison sections (formerly the scripts `10b`–`10d`) write into
+    At the end, three comparison sections write into
     the main run's `output_figs/`. Each runs only in the canonical configuration
     (`PPR_HAZARD` and `PPR_BUDGET` unset) and only when its input runs exist; otherwise it
     is skipped with a message, so `10` still runs normally inside every budget and hazard
@@ -196,35 +211,74 @@ Quarto to render the results document. Run everything from the project root.
       `fig_haz_sweep_pairs`, `fig_haz_sweep_risk_box`, `haz_sweep_metadata.json`; warns if
       a hazard run was built from an older version of the main run's panel.
 
-11. **`11_results.qmd`** reports results from `10_results_assets`, with annotation/prose accompanying each figure/graph/map.
+11. **`11_results.qmd`** — the results document. It embeds the assets from
+    `10_results_assets` (it computes nothing itself) and adds annotation/prose for each
+    figure, table and map. All table formatting (`flextable`) and all titles and captions
+    live here. It reads `runs/<RUN_ID>/output_figs/` for the run set in `00_config`, so
+    render it with `PPR_BUDGET` and `PPR_HAZARD` unset.
 
+    Its **Updates** section serves two purposes:
+    - *Sensitivity analyses* — the conversion-hazard, budget and land-cover entries
+      (formerly the child files `11b`–`11d`). Each is shown only if the matching
+      comparison section of `10` has run (`haz_sweep_metadata.json`, `bud_metadata.json`,
+      `cmp_metadata.json`); otherwise it is hidden.
+    - *Methods changelog* — dated, hand-written entries recording changes to the methods
+      and the reasons for them: temporal alignment of the benefit data (7/10/2026), the
+      fix to the land-cover spatial join (7/30/2026), the switch from net to gross habitat
+      loss (9/15/2026), and the removal of protected areas from the hazard (9/30/2026).
+      These entries are static text and are not regenerated by `10`; they are the place
+      to look for the history behind the current methods.
 
-    Its Updates section holds the land-cover, budget and hazard entries (formerly the
-    child files `11b`–`11d`). Each is shown only if the matching comparison section of
-    `10` has run (`cmp_metadata.json`, `bud_metadata.json`, `haz_sweep_metadata.json`);
-    otherwise it is hidden.
-
-12. **`12_compare_runs.qmd`** — standalone document comparing the land-cover runs
-    (GCAM reference vs. BAU).
-    
-13. **`13_run_budget_sweep`** — budget sensitivity driver: runs `08` and `10` for each
-    budget, skips budgets already complete, logs each run to `logs/budget_sweep/`, and checks
-    the budget-5 run against the main run. Options: `--dry-run`, `--force`, or budgets as
-    arguments (e.g. `Rscript 13_run_budget_sweep.R 3 7`).
-
-14. **`14_build_hazard_panel`** — builds the high-hazard run's inputs. Reads the main
-    run's `data_panel.rds` and `eau_flows.rds`, solves for the factor `k` so that the
-    habitat-weighted mean 2020 `trans_prob` (weights = unprotected suitable habitat)
+14. **`14_build_hazard_panel`** — builds the inputs for one conversion-hazard run. Reads
+    the main run's `data_panel.rds` and `eau_flows.rds`, solves for the factor `k` so that
+    the habitat-weighted mean 2020 `trans_prob` (weights = unprotected suitable habitat)
     equals the `PPR_HAZARD` annual rate compounded to a decade, applies
     `trans_prob' = 1 - (1 - trans_prob)^k` to every row, checks the result, and writes the
     scaled `data_panel.rds` and `hazard_scaling.json` (target, `k`, means, source md5) to
-    the high-hazard run's `derived_data/`. Nothing else in the panel changes.
+    the hazard run's `derived_data/`. 
+
+## Data panel
+
+The final data panel, `runs/<LC_SCENARIO>/derived_data/data_panel.rds` (with a `.csv`
+copy), is written by `06` and read by `08` and `10`. Intermediate panels are written along
+the way: `eau_panel.rds` and `eau_flows.rds` (`03`), `panel_04_benefit.rds` (`04`) and
+`panel_05_risk.rds` (`05`); `14` reads `eau_flows.rds` directly. Variables in the final
+panel:
+
+| Variable | Type | Description |
+|-----|----|------------------|
+| `eau_id` | integer | Unique EAU identifier. Assigned in script 01 by re-indexing valid raster cells 1:N, sorted by WMD (alphabetical) then original cell number. Stable across all scripts. |
+| `wmd_id` | character | Name of the Wetland Management District containing the EAU centroid. 20 distinct values after exclusions. |
+| `year` | integer | Decision time step: 2020 (baseline) and each decade 2030–2100. Nine distinct values. |
+| `rcp` | character | Emissions scenario: `"45"`, `"85"`, `"baseline"` (2020 only), or `"stationary"` (no-change counterfactual). |
+| `gcm` | character | Climate model variant: `"wet"`, `"dry"`, `"baseline"`, or `"stationary"`. Note that `prop_suitable` does not vary by `gcm` — only the benefit data are GCM-specific. |
+| `prop_suitable` | double | Proportion (0–1) of the EAU classified as suitable habitat. |
+| `abs_abundance` | double | WMD-level total duck abundance for that year and scenario, repeated across every EAU in the WMD. |
+| `scaled_abundance` | double | EAU-level share of `abs_abundance`, allocated by habitat area. The benefit term used in the ILP. |
+| `total_prop_suitable` | double | Sum of `prop_suitable` across all EAUs within the WMD × year × `rcp` × `gcm` group. Denominator for `habitat_share`. |
+| `habitat_share` | double | `prop_suitable / total_prop_suitable`; the EAU's fraction of its WMD's suitable habitat in that scenario-year. `NA` where the WMD total is 0. |
+| `trans_prob` | double | Per-period risk of habitat loss (transition probability), bounded [0, 1]. |
+| `cost` | double | Estimated acquisition cost of the EAU in nominal USD for that decision year. Scenario-invariant. |
+| `cell_id` | integer | Raster cell number in the EAU grid — the permanent by-place key linking each EAU to its location. Used to join land-cover data to the panel by position on the ground rather than by row order. `NA` for 2020 baseline and stationary rows, which are constructed from `eau_id` after the land-cover join and never carry the cell key. |
 
 ## References and sources
 
-Land-cover projections: USGS FOREsce (GCAM Reference / BAU); Sohl, T. L., et al. (2012),
-*Agriculture, Ecosystems & Environment* 153:1–15. Waterfowl abundance: McKenna, O. P., et al.
-(2026), *BioScience* biag091. Acquisition cost: Nolte 2020,
-*PNAS* 117(47):29577 (PLACES FMV raster; Dryad doi:10.5061/dryad.np5hqbzq9). Protected areas:
-USGS GAP (2024), PAD-US 4.1, https://doi.org/10.5066/P96WBCHS. EAU gridding
-adapted from a script by Heini Kujala. Prior toy-problem precedent: Rubenstein, Madeleine A., et al. "Cognitive and institutional barriers to effective natural resource management under global change." Conservation Biology (2026): e70393.
+**Data.** Land-cover projections: USGS FOREsce (GCAM Reference / BAU); Sohl, T. L., et al.
+(2012), *Agriculture, Ecosystems & Environment* 153:1–15. Waterfowl abundance: McKenna,
+O. P., et al. (2026), *BioScience* biag091. Acquisition cost: Nolte 2020,
+*PNAS* 117(47):29577 (PLACES FMV raster; Dryad doi:10.5061/dryad.np5hqbzq9). Protected
+areas: USGS GAP (2024), PAD-US 4.1, https://doi.org/10.5066/P96WBCHS. Conversion-rate
+targets for the hazard sweep: Johnston (2013), Stephens et al. (2008), Kemink et al.
+(2023), Rashford et al. (2011).
+
+**Model formulation.** Gerling, C., M. Drechsler, K. Keuler, A. Sturm, and F. Wätzold
+(2023), "Time to Consider the Timing of Conservation Measures: Designing Cost-Effective
+Agri-Environment Schemes under Climate Change," *Agricultural and Resource Economics
+Review* 52(2):231–49. Wu, C.-H. (2022), *Value of flexible and dynamic resource allocation
+in conservation planning*, PhD dissertation, University of Melbourne. Gurobi Optimizer
+Reference Manual (2026), https://docs.gurobi.com/projects/optimizer/en/current/index.html.
+
+**Other.** EAU gridding adapted from a script by Heini Kujala. Prior toy-problem
+precedent: Rubenstein, Madeleine A., et al. "Cognitive and institutional barriers to
+effective natural resource management under global change." *Conservation Biology* (2026):
+e70393.
