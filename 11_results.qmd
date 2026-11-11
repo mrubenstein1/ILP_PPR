@@ -348,13 +348,13 @@ across 20 WMDs**, over **9 decadal periods** and **5 scenarios** (RCP
 
 # Model Formulation
 
-I adapted previously published models to suit our formulation of the PPR problem. This work was informed two primary sources (Gerling et al 2023 & Wu 2022), and the Gurobi Optimizer Handbook:
+I adapted previously published models to suit our formulation of the PPR problem, and also leaned on Jaime's original write up of the planned ILP model from our original formulation (2023-2025):
 
-  Gerling, Charlotte, Martin Drechsler, Klaus Keuler, Astrid Sturm, and Frank Wätzold. 2023. “Time to Consider the Timing of Conservation Measures: Designing Cost-Effective Agri-Environment Schemes under Climate Change.” Agricultural and Resource Economics Review 52 (2): 231–49.
+> Gerling, Charlotte, Martin Drechsler, Klaus Keuler, Astrid Sturm, and Frank Wätzold. 2023. “Time to Consider the Timing of Conservation Measures: Designing Cost-Effective Agri-Environment Schemes under Climate Change.” Agricultural and Resource Economics Review 52 (2): 231–49.
 
-  Wu, Chung-Huey. Value of flexible and dynamic resource allocation in conservation planning. Diss. University of Melbourne, 2022.
+> Wu, Chung-Huey. Value of flexible and dynamic resource allocation in conservation planning. Diss. University of Melbourne, 2022.
 
-  Gurobi Optimizer Reference Manual. 2026. https://doi.org/https://docs.gurobi.com/projects/optimizer/en/current/index.html#
+> Gurobi Optimizer Reference Manual. 2026. https://doi.org/https://docs.gurobi.com/projects/optimizer/en/current/index.html#
 
 
 **Decision model.** EAUs are indexed over $i \in \mathcal{I}$ and $t \in \{0, \dots, T\}$ index decades (0 =
